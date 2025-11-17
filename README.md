@@ -1,36 +1,124 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# My Expenses Tracker 💰
 
-## Getting Started
+A modern, full-featured expense tracking web application built with Next.js, TypeScript, Tailwind CSS, and shadcn/ui.
 
-First, run the development server:
+## 🚀 Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Track Expenses**: Record and manage all your daily expenses with ease
+- **Categories**: Organize expenses into custom categories
+- **Budget Management**: Set and monitor budgets for different categories
+- **Analytics**: Visualize spending patterns with charts and reports
+- **Responsive Design**: Beautiful UI that works on all devices
+- **Dark Mode**: Eye-friendly dark theme support
+
+## 🛠️ Tech Stack
+
+- **Framework**: [Next.js 15](https://nextjs.org/) with App Router
+- **Language**: [TypeScript](https://www.typescriptlang.org/)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+- **UI Components**: [shadcn/ui](https://ui.shadcn.com/)
+- **Icons**: React Icons / Lucide Icons
+
+## 📦 Project Structure
+
+```
+my-expenses-tracker/
+├── src/
+│   ├── app/                  # Next.js app router pages
+│   │   ├── dashboard/        # Dashboard page
+│   │   ├── layout.tsx        # Root layout
+│   │   └── page.tsx          # Home page
+│   ├── components/
+│   │   └── ui/               # shadcn/ui components
+│   ├── features/
+│   │   ├── expenses/         # Expense-related components
+│   │   ├── categories/       # Category-related components
+│   │   └── dashboard/        # Dashboard components
+│   ├── hooks/                # Custom React hooks
+│   ├── services/             # API and data services
+│   ├── types/                # TypeScript type definitions
+│   └── utils/                # Utility functions
+├── public/                   # Static assets
+└── package.json
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🏁 Getting Started
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Prerequisites
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Node.js 18+ 
+- npm or yarn or pnpm
 
-## Learn More
+### Installation
 
-To learn more about Next.js, take a look at the following resources:
+1. Navigate to the project directory:
+```bash
+cd my-expenses-tracker
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+3. Run the development server:
+```bash
+npm run dev
+```
 
-## Deploy on Vercel
+4. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 📝 Available Scripts
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm start` - Start production server
+- `npm run lint` - Run ESLint
+- `npm run type-check` - Run TypeScript compiler check
+
+## 🎯 Roadmap
+
+### Phase 1: Core Features (Current)
+- [x] Project setup with Next.js, TypeScript, Tailwind CSS
+- [x] shadcn/ui integration
+- [x] Basic project structure
+- [ ] Expense CRUD operations
+- [ ] Category management
+- [ ] Local storage implementation
+
+### Phase 2: Enhanced Features
+- [ ] Dashboard with analytics
+- [ ] Data visualization (charts)
+- [ ] Budget tracking
+- [ ] Export data (CSV, PDF)
+- [ ] Search and filter expenses
+
+### Phase 3: Advanced Features
+- [ ] User authentication
+- [ ] Cloud sync
+- [ ] Recurring expenses
+- [ ] Receipt upload
+- [ ] Multi-currency support
+
+### Phase 4: Mobile App
+- [ ] React Native mobile app
+- [ ] Cross-platform sync
+- [ ] Push notifications
+
+## 🤝 Contributing
+
+Contributions are welcome! Feel free to open issues and pull requests.
+
+## 📄 License
+
+This project is open source and available under the [MIT License](LICENSE).
+
+## 🔗 Links
+
+- [Next.js Documentation](https://nextjs.org/docs)
+- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
+- [shadcn/ui Documentation](https://ui.shadcn.com)
+
+---
+
+Built with ❤️ using modern web technologies
