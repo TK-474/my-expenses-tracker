@@ -5,7 +5,7 @@ export interface Expense {
   category: string;
   date: Date;
   paymentMethod?: 'cash' | 'card' | 'digital' | 'other';
-  /** Which bank the card belongs to; only set when paymentMethod is 'card' */
+  /** Bank or wallet provider; only set when paymentMethod is 'card' or 'digital' */
   bank?: string;
   notes?: string;
   createdAt: Date;
@@ -18,7 +18,7 @@ export interface CreateExpenseInput {
   category: string;
   date: Date;
   paymentMethod?: 'cash' | 'card' | 'digital' | 'other';
-  /** Which bank the card belongs to; only set when paymentMethod is 'card' */
+  /** Bank or wallet provider; only set when paymentMethod is 'card' or 'digital' */
   bank?: string;
   notes?: string;
 }

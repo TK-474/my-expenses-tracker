@@ -137,9 +137,9 @@ function ExpenseForm({
       category: form.category,
       date: fromInputDate(form.date),
       paymentMethod: form.paymentMethod as Expense['paymentMethod'],
-      // Bank only applies to card payments; cleared if the method changed
+      // Bank only applies to card and digital wallet payments; cleared if the method changed
       bank:
-        form.paymentMethod === 'card'
+        form.paymentMethod === 'card' || form.paymentMethod === 'digital'
           ? form.bank.trim() || undefined
           : undefined,
       notes: form.notes.trim() || undefined,
@@ -260,12 +260,18 @@ function ExpenseForm({
         </div>
       </div>
 
-      {form.paymentMethod === 'card' && (
+      {(form.paymentMethod === 'card' || form.paymentMethod === 'digital') && (
         <div className="space-y-1.5">
-          <Label htmlFor="bank">Which bank?</Label>
+          <Label htmlFor="bank">
+            {form.paymentMethod === 'card' ? 'Which bank?' : 'Which bank / wallet?'}
+          </Label>
           <Input
             id="bank"
-            placeholder="e.g. HBL, Meezan, UBL"
+            placeholder={
+              form.paymentMethod === 'card'
+                ? 'e.g. HBL, Meezan, UBL'
+                : 'e.g. JazzCash, Easypaisa, SadaPay'
+            }
             value={form.bank}
             onChange={e => set('bank', e.target.value)}
           />
