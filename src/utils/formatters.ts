@@ -1,10 +1,16 @@
 /**
- * Format currency amount
+ * Format currency amount.
+ * Fraction digits are set explicitly because some currencies (e.g. PKR)
+ * default to zero decimals in Intl and would silently round cents away.
  */
-export function formatCurrency(amount: number, currency: string = 'USD'): string {
+export function formatCurrency(amount: number, currency: string = 'PKR'): string {
+  const hasCents = Math.abs(amount % 1) > 0.004;
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
+    currencyDisplay: 'narrowSymbol',
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
   }).format(amount);
 }
 
