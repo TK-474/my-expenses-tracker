@@ -4,9 +4,26 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Plus, Sparkles, TrendingDown, TrendingUp } from 'lucide-react';
 import { useExpenses } from '@/context/expenses-context';
-import { lastMonths, startOfMonth, endOfMonth, startOfDay } from '@/utils/dates';
-import { formatCurrency } from '@/utils/formatters';
+import {
+  lastMonths,
+  startOfMonth,
+  endOfMonth,
+  startOfDay,
+  endOfDay,
+  resolvePreset,
+  fromInputDate,
+  type DateRange,
+} from '@/utils/dates';
+import { formatCurrency, formatDate } from '@/utils/formatters';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Card,
   CardContent,
@@ -21,20 +38,63 @@ import { ExpenseFormDialog } from '@/features/expenses/expense-form-dialog';
 
 const FALLBACK_COLORS = ['#796e8e', '#c9a44a', '#c07349', '#6b83a5', '#b0788f'];
 
+const RANGE_OPTIONS = [
+  { label: 'This month', value: 'thisMonth' },
+  { label: 'Last month', value: 'lastMonth' },
+  { label: 'Last 7 days', value: 'last7days' },
+  { label: 'Last 30 days', value: 'last30days' },
+  { label: 'This year', value: 'thisYear' },
+  { label: 'All time', value: 'allTime' },
+  { label: 'Custom range', value: 'custom' },
+] as const;
+
 export default function DashboardPage() {
   const { hydrated, expenses, categories, settings, loadSampleData } =
     useExpenses();
   const [formOpen, setFormOpen] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [rangeFilter, setRangeFilter] = useState<string>('thisMonth');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
 
   const currency = settings.currency;
   const now = new Date();
 
+  // Resolve the selected filter into a concrete range (null = all time) and a label
+  const { range, rangeLabel } = useMemo<{
+    range: DateRange | null;
+    rangeLabel: string;
+  }>(() => {
+    if (rangeFilter === 'allTime') return { range: null, rangeLabel: 'All time' };
+    if (rangeFilter === 'custom') {
+      const start = customStart ? startOfDay(fromInputDate(customStart)) : null;
+      const end = customEnd ? endOfDay(fromInputDate(customEnd)) : null;
+      if (start && end && start <= end) {
+        return {
+          range: { start, end },
+          rangeLabel: `${formatDate(start)} – ${formatDate(end)}`,
+        };
+      }
+      return { range: null, rangeLabel: 'Custom range' };
+    }
+    return {
+      range: resolvePreset(rangeFilter),
+      rangeLabel: RANGE_OPTIONS.find(o => o.value === rangeFilter)?.label ?? '',
+    };
+  }, [rangeFilter, customStart, customEnd]);
+
+  // Equal-length window immediately preceding the range, for the delta comparison
+  const prevRange = useMemo<DateRange | null>(() => {
+    if (!range) return null;
+    const span = range.end.getTime() - range.start.getTime();
+    return { start: new Date(range.start.getTime() - span), end: range.start };
+  }, [range]);
+
   const {
-    monthTotal,
-    lastMonthTotal,
+    periodTotal,
+    prevTotal,
     todayTotal,
-    monthCount,
+    periodCount,
     donutSlices,
     trendPoints,
     budgeted,
@@ -43,29 +103,36 @@ export default function DashboardPage() {
     const monthStart = startOfMonth(now);
     const monthEnd = endOfMonth(now);
     const dayStart = startOfDay(now);
-    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const prevStart = startOfMonth(prevMonthDate);
-    const prevEnd = endOfMonth(prevMonthDate);
 
-    let monthTotal = 0;
-    let lastMonthTotal = 0;
+    let periodTotal = 0;
+    let prevTotal = 0;
     let todayTotal = 0;
-    let monthCount = 0;
+    let periodCount = 0;
     const byCategory = new Map<string, number>();
+    const monthByCategory = new Map<string, number>();
 
     for (const expense of expenses) {
       const date = new Date(expense.date);
-      if (date >= monthStart && date <= monthEnd) {
-        monthTotal += expense.amount;
-        monthCount += 1;
+
+      if (!range || (date >= range.start && date <= range.end)) {
+        periodTotal += expense.amount;
+        periodCount += 1;
         byCategory.set(
           expense.category,
           (byCategory.get(expense.category) ?? 0) + expense.amount
         );
-        if (date >= dayStart) todayTotal += expense.amount;
-      } else if (date >= prevStart && date <= prevEnd) {
-        lastMonthTotal += expense.amount;
       }
+      if (prevRange && date >= prevRange.start && date < prevRange.end) {
+        prevTotal += expense.amount;
+      }
+      // Budgets are a monthly concept, so track the current calendar month separately
+      if (date >= monthStart && date <= monthEnd) {
+        monthByCategory.set(
+          expense.category,
+          (monthByCategory.get(expense.category) ?? 0) + expense.amount
+        );
+      }
+      if (date >= dayStart) todayTotal += expense.amount;
     }
 
     const donutSlices = [...byCategory.entries()]
@@ -93,28 +160,28 @@ export default function DashboardPage() {
       .filter(c => c.budget != null && c.budget > 0)
       .map(c => ({
         category: c,
-        spent: byCategory.get(c.name) ?? 0,
+        spent: monthByCategory.get(c.name) ?? 0,
       }))
       .sort((a, b) => b.spent / b.category.budget! - a.spent / a.category.budget!);
 
     return {
-      monthTotal,
-      lastMonthTotal,
+      periodTotal,
+      prevTotal,
       todayTotal,
-      monthCount,
+      periodCount,
       donutSlices,
       trendPoints,
       budgeted,
       recent: expenses.slice(0, 6),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expenses, categories]);
+  }, [expenses, categories, range, prevRange]);
 
   const monthName = now.toLocaleDateString('en-US', {
     month: 'long',
     year: 'numeric',
   });
-  const delta = lastMonthTotal > 0 ? (monthTotal - lastMonthTotal) / lastMonthTotal : null;
+  const delta = prevTotal > 0 ? (periodTotal - prevTotal) / prevTotal : null;
   const totalBudget = budgeted.reduce((sum, b) => sum + (b.category.budget ?? 0), 0);
   const totalBudgetSpent = budgeted.reduce((sum, b) => sum + b.spent, 0);
   const categoryByName = new Map(categories.map(c => [c.name, c]));
@@ -165,13 +232,53 @@ export default function DashboardPage() {
         </Button>
       </div>
 
+      {/* Period filter */}
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        <span className="eyebrow mr-1">Showing</span>
+        <Select value={rangeFilter} onValueChange={setRangeFilter}>
+          <SelectTrigger className="w-auto min-w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {RANGE_OPTIONS.map(o => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {rangeFilter === 'custom' && (
+          <div className="flex items-center gap-2">
+            <Input
+              type="date"
+              aria-label="Start date"
+              className="w-auto"
+              value={customStart}
+              max={customEnd || undefined}
+              onChange={e => setCustomStart(e.target.value)}
+            />
+            <span className="text-sm text-muted-foreground">to</span>
+            <Input
+              type="date"
+              aria-label="End date"
+              className="w-auto"
+              value={customEnd}
+              min={customStart || undefined}
+              onChange={e => setCustomEnd(e.target.value)}
+            />
+          </div>
+        )}
+      </div>
+
       {/* Stat cards */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card className="rise-in" style={{ '--stagger': 0 } as React.CSSProperties}>
           <CardHeader className="pb-2">
-            <CardDescription className="eyebrow">Spent this month</CardDescription>
+            <CardDescription className="eyebrow">
+              Spent · {rangeLabel}
+            </CardDescription>
             <CardTitle className="tabular text-2xl sm:text-3xl">
-              {formatCurrency(monthTotal, currency)}
+              {formatCurrency(periodTotal, currency)}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -185,10 +292,10 @@ export default function DashboardPage() {
                 <span className={delta >= 0 ? 'text-terracotta' : 'text-primary'}>
                   {Math.abs(delta * 100).toFixed(0)}%
                 </span>
-                vs last month
+                vs prior period
               </p>
             ) : (
-              <p className="text-xs text-muted-foreground">No prior month yet</p>
+              <p className="text-xs text-muted-foreground">No prior period to compare</p>
             )}
           </CardContent>
         </Card>
@@ -228,10 +335,10 @@ export default function DashboardPage() {
         <Card className="rise-in" style={{ '--stagger': 3 } as React.CSSProperties}>
           <CardHeader className="pb-2">
             <CardDescription className="eyebrow">Entries</CardDescription>
-            <CardTitle className="tabular text-2xl sm:text-3xl">{monthCount}</CardTitle>
+            <CardTitle className="tabular text-2xl sm:text-3xl">{periodCount}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">This month</p>
+            <p className="text-xs text-muted-foreground">{rangeLabel}</p>
           </CardContent>
         </Card>
       </div>
@@ -241,19 +348,19 @@ export default function DashboardPage() {
         <Card className="rise-in" style={{ '--stagger': 4 } as React.CSSProperties}>
           <CardHeader>
             <CardTitle className="font-display text-xl">By category</CardTitle>
-            <CardDescription>Where this month went</CardDescription>
+            <CardDescription>Where your money went</CardDescription>
           </CardHeader>
           <CardContent>
             {donutSlices.length === 0 ? (
               <p className="py-10 text-center text-sm text-muted-foreground">
-                No entries this month yet.
+                No entries in this period yet.
               </p>
             ) : (
               <div className="flex flex-col items-center gap-6 sm:flex-row">
                 <DonutChart
                   slices={donutSlices}
-                  centerValue={formatCurrency(monthTotal, currency)}
-                  centerLabel="this month"
+                  centerValue={formatCurrency(periodTotal, currency)}
+                  centerLabel="spent"
                 />
                 <ul className="w-full flex-1 space-y-1.5">
                   {donutSlices.slice(0, 6).map(slice => (
@@ -299,7 +406,7 @@ export default function DashboardPage() {
         <Card className="rise-in" style={{ '--stagger': 6 } as React.CSSProperties}>
           <CardHeader>
             <CardTitle className="font-display text-xl">Budgets</CardTitle>
-            <CardDescription>How each envelope is holding up</CardDescription>
+            <CardDescription>How each envelope is holding up · {monthName}</CardDescription>
           </CardHeader>
           <CardContent>
             {budgeted.length === 0 ? (

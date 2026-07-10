@@ -10,6 +10,7 @@ interface ExpenseListProps {
   expenses: Expense[];
   categories: Category[];
   currency: string;
+  onSelect: (expense: Expense) => void;
   onEdit: (expense: Expense) => void;
   onDelete: (expense: Expense) => void;
 }
@@ -19,6 +20,7 @@ export function ExpenseList({
   expenses,
   categories,
   currency,
+  onSelect,
   onEdit,
   onDelete,
 }: ExpenseListProps) {
@@ -31,7 +33,17 @@ export function ExpenseList({
         return (
           <li
             key={expense.id}
-            className="group rise-in flex items-center gap-3 py-3"
+            role="button"
+            tabIndex={0}
+            aria-label={`View ${expense.description}`}
+            onClick={() => onSelect(expense)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelect(expense);
+              }
+            }}
+            className="group rise-in -mx-2 flex cursor-pointer items-center gap-3 rounded-md px-2 py-3 transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
             style={{ '--stagger': Math.min(i, 12) } as React.CSSProperties}
           >
             <span
@@ -76,7 +88,10 @@ export function ExpenseList({
                 variant="ghost"
                 size="icon-sm"
                 aria-label={`Edit ${expense.description}`}
-                onClick={() => onEdit(expense)}
+                onClick={e => {
+                  e.stopPropagation();
+                  onEdit(expense);
+                }}
               >
                 <Pencil className="size-3.5" />
               </Button>
@@ -85,7 +100,10 @@ export function ExpenseList({
                 size="icon-sm"
                 className="text-muted-foreground hover:text-destructive"
                 aria-label={`Delete ${expense.description}`}
-                onClick={() => onDelete(expense)}
+                onClick={e => {
+                  e.stopPropagation();
+                  onDelete(expense);
+                }}
               >
                 <Trash2 className="size-3.5" />
               </Button>

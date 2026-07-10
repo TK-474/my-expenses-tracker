@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { ExpenseFormDialog } from '@/features/expenses/expense-form-dialog';
+import { ExpenseDetailDialog } from '@/features/expenses/expense-detail-dialog';
 import { DeleteExpenseDialog } from '@/features/expenses/delete-expense-dialog';
 import { ExpenseList } from '@/features/expenses/expense-list';
 
@@ -34,6 +35,7 @@ export default function ExpensesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [deleting, setDeleting] = useState<Expense | null>(null);
+  const [viewing, setViewing] = useState<Expense | null>(null);
 
   const filtered = useMemo(() => {
     const range = rangeFilter === 'all' ? null : resolvePreset(rangeFilter);
@@ -161,6 +163,7 @@ export default function ExpensesPage() {
                 expenses={filtered}
                 categories={categories}
                 currency={settings.currency}
+                onSelect={setViewing}
                 onEdit={expense => { setEditing(expense); setFormOpen(true); }}
                 onDelete={setDeleting}
               />
@@ -179,6 +182,21 @@ export default function ExpensesPage() {
         </CardContent>
       </Card>
 
+      <ExpenseDetailDialog
+        expense={viewing}
+        categories={categories}
+        currency={settings.currency}
+        onOpenChange={open => { if (!open) setViewing(null); }}
+        onEdit={expense => {
+          setViewing(null);
+          setEditing(expense);
+          setFormOpen(true);
+        }}
+        onDelete={expense => {
+          setViewing(null);
+          setDeleting(expense);
+        }}
+      />
       <ExpenseFormDialog
         open={formOpen}
         onOpenChange={setFormOpen}
