@@ -25,17 +25,25 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
+/** Fields that can pre-fill a new entry (e.g. logging a subscription payment) */
+export type ExpenseDefaults = Partial<
+  Pick<Expense, 'amount' | 'description' | 'category' | 'paymentMethod' | 'bank' | 'notes'>
+>;
+
 interface ExpenseFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** When set, the dialog edits this expense instead of creating one */
   expense?: Expense | null;
+  /** Pre-fill values for a new entry; ignored when editing */
+  defaults?: ExpenseDefaults;
 }
 
 export function ExpenseFormDialog({
   open,
   onOpenChange,
   expense,
+  defaults,
 }: ExpenseFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -55,6 +63,7 @@ export function ExpenseFormDialog({
         <ExpenseForm
           key={expense?.id ?? 'new'}
           expense={expense}
+          defaults={defaults}
           onOpenChange={onOpenChange}
         />
       </DialogContent>
@@ -74,9 +83,11 @@ interface FormState {
 
 function ExpenseForm({
   expense,
+  defaults,
   onOpenChange,
 }: {
   expense?: Expense | null;
+  defaults?: ExpenseDefaults;
   onOpenChange: (open: boolean) => void;
 }) {
   const { categories, settings, addExpense, updateExpense } = useExpenses();
@@ -92,13 +103,13 @@ function ExpenseForm({
           notes: expense.notes ?? '',
         }
       : {
-          amount: '',
-          description: '',
-          category: categories[0]?.name ?? '',
+          amount: defaults?.amount != null ? String(defaults.amount) : '',
+          description: defaults?.description ?? '',
+          category: defaults?.category ?? categories[0]?.name ?? '',
           date: toInputDate(new Date()),
-          paymentMethod: 'card',
-          bank: '',
-          notes: '',
+          paymentMethod: defaults?.paymentMethod ?? 'card',
+          bank: defaults?.bank ?? '',
+          notes: defaults?.notes ?? '',
         }
   );
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});

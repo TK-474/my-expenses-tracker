@@ -14,10 +14,17 @@ import {
   Category,
   CreateCategoryInput,
   UpdateCategoryInput,
+  Subscription,
+  CreateSubscriptionInput,
+  UpdateSubscriptionInput,
 } from '@/types';
 import { db } from '@/services/db';
 import { useAuth } from '@/context/auth-context';
-import { DEFAULT_CATEGORIES, STORAGE_KEYS } from '@/lib/constants';
+import {
+  DEFAULT_CATEGORIES,
+  SUBSCRIPTIONS_CATEGORY,
+  STORAGE_KEYS,
+} from '@/lib/constants';
 import { SAMPLE_EXPENSES, SAMPLE_BUDGETS } from '@/lib/sample-data';
 
 interface Settings {
@@ -31,6 +38,7 @@ interface ExpensesContextValue {
   hydrated: boolean;
   expenses: Expense[];
   categories: Category[];
+  subscriptions: Subscription[];
   settings: Settings;
   /** Entries still sitting in this browser's pre-Supabase localStorage */
   legacyLocalCount: number;
@@ -40,6 +48,9 @@ interface ExpensesContextValue {
   addCategory: (input: CreateCategoryInput) => Promise<void>;
   updateCategory: (input: UpdateCategoryInput) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
+  addSubscription: (input: CreateSubscriptionInput) => Promise<void>;
+  updateSubscription: (input: UpdateSubscriptionInput) => Promise<void>;
+  deleteSubscription: (id: string) => Promise<void>;
   setCurrency: (currency: string) => void;
   loadSampleData: () => Promise<void>;
   clearAllData: () => Promise<void>;
@@ -95,6 +106,7 @@ export function ExpensesProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [legacyLocalCount, setLegacyLocalCount] = useState(0);
 
@@ -104,10 +116,19 @@ export function ExpensesProvider({ children }: { children: React.ReactNode }) {
       // First sign-in: give the account the default set of categories
       await db.createCategories(DEFAULT_CATEGORIES, currentUserId);
       cats = await db.fetchCategories();
+    } else if (!cats.some(c => c.name === SUBSCRIPTIONS_CATEGORY.name)) {
+      // Existing accounts predating the subscriptions feature still get the
+      // category that logged subscription payments are filed under.
+      await db.createCategory(SUBSCRIPTIONS_CATEGORY, currentUserId);
+      cats = await db.fetchCategories();
     }
-    const exps = await db.fetchExpenses();
+    const [exps, subs] = await Promise.all([
+      db.fetchExpenses(),
+      db.fetchSubscriptions(),
+    ]);
     setCategories(cats);
     setExpenses(sortByDateDesc(exps));
+    setSubscriptions(subs);
   }, []);
 
   useEffect(() => {
@@ -123,6 +144,7 @@ export function ExpensesProvider({ children }: { children: React.ReactNode }) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reset when signed out
       setExpenses([]);
       setCategories([]);
+      setSubscriptions([]);
       setHydrated(false);
       return;
     }
@@ -177,6 +199,27 @@ export function ExpensesProvider({ children }: { children: React.ReactNode }) {
     setCategories(prev => prev.filter(c => c.id !== id));
   }, []);
 
+  const addSubscription = useCallback(
+    async (input: CreateSubscriptionInput) => {
+      if (!userId) return;
+      const subscription = await db.createSubscription(input, userId);
+      setSubscriptions(prev => [...prev, subscription]);
+    },
+    [userId]
+  );
+
+  const updateSubscription = useCallback(async (input: UpdateSubscriptionInput) => {
+    const subscription = await db.updateSubscription(input);
+    setSubscriptions(prev =>
+      prev.map(s => (s.id === subscription.id ? subscription : s))
+    );
+  }, []);
+
+  const deleteSubscription = useCallback(async (id: string) => {
+    await db.deleteSubscription(id);
+    setSubscriptions(prev => prev.filter(s => s.id !== id));
+  }, []);
+
   const setCurrency = useCallback((currency: string) => {
     setSettings(prev => {
       const next = { ...prev, currency };
@@ -228,6 +271,7 @@ export function ExpensesProvider({ children }: { children: React.ReactNode }) {
         hydrated,
         expenses,
         categories,
+        subscriptions,
         settings,
         legacyLocalCount,
         addExpense,
@@ -236,6 +280,9 @@ export function ExpensesProvider({ children }: { children: React.ReactNode }) {
         addCategory,
         updateCategory,
         deleteCategory,
+        addSubscription,
+        updateSubscription,
+        deleteSubscription,
         setCurrency,
         loadSampleData,
         clearAllData,

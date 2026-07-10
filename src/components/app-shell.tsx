@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   LogOut,
   ReceiptText,
+  Repeat,
   Settings,
   Tags,
 } from 'lucide-react';
@@ -16,10 +17,11 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { useAuth } from '@/context/auth-context';
 
 const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/expenses', label: 'Expenses', icon: ReceiptText },
-  { href: '/categories', label: 'Categories', icon: Tags },
-  { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/dashboard', label: 'Dashboard', shortLabel: 'Home', icon: LayoutDashboard },
+  { href: '/expenses', label: 'Expenses', shortLabel: 'Expenses', icon: ReceiptText },
+  { href: '/subscriptions', label: 'Subscriptions', shortLabel: 'Subs', icon: Repeat },
+  { href: '/categories', label: 'Categories', shortLabel: 'Tags', icon: Tags },
+  { href: '/settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -84,7 +86,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Mobile bottom tab bar */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur sm:hidden">
-        <div className="grid grid-cols-4">
+        <div className="grid grid-cols-5">
           {NAV_ITEMS.map(item => {
             const active = pathname.startsWith(item.href);
             const Icon = item.icon;
@@ -98,7 +100,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 )}
               >
                 <Icon className="size-5" strokeWidth={active ? 2 : 1.5} />
-                {item.label}
+                {item.shortLabel}
               </Link>
             );
           })}

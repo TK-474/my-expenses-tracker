@@ -6,6 +6,14 @@ export const PAYMENT_METHODS = [
   { value: 'other', label: 'Other' },
 ] as const;
 
+// The category that logged subscription payments are filed under.
+// Guaranteed to exist for every account (see expenses-context).
+export const SUBSCRIPTIONS_CATEGORY = {
+  name: 'Subscriptions',
+  icon: '🔁',
+  color: '#8b7fd6',
+} as const;
+
 // Default Categories
 export const DEFAULT_CATEGORIES = [
   { name: 'Food & Dining', icon: '🍔', color: '#FF6B6B' },
@@ -15,8 +23,15 @@ export const DEFAULT_CATEGORIES = [
   { name: 'Healthcare', icon: '⚕️', color: '#FF8B94' },
   { name: 'Utilities', icon: '💡', color: '#95E1D3' },
   { name: 'Education', icon: '📚', color: '#C7CEEA' },
+  { name: SUBSCRIPTIONS_CATEGORY.name, icon: SUBSCRIPTIONS_CATEGORY.icon, color: SUBSCRIPTIONS_CATEGORY.color },
   { name: 'Others', icon: '📦', color: '#B4B4B4' },
 ];
+
+// Subscription billing cadences
+export const SUBSCRIPTION_CADENCES = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
+] as const;
 
 // Currency Options
 export const CURRENCIES = [

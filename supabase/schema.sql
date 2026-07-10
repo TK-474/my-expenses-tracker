@@ -27,17 +27,39 @@ create table public.expenses (
   updated_at timestamptz not null default now()
 );
 
+-- Subscriptions are tracked separately from the ledger. They do NOT auto-post
+-- expenses; the app offers a manual "log this payment" action instead.
+create table public.subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  name text not null,
+  amount numeric(12, 2) not null check (amount > 0),
+  cadence text not null check (cadence in ('monthly', 'yearly')),
+  billing_day int not null check (billing_day between 1 and 31),
+  billing_month int check (billing_month between 1 and 12),
+  payment_method text check (payment_method in ('cash', 'card', 'digital', 'other')),
+  bank text,
+  status text not null default 'active' check (status in ('active', 'cancelled')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create index expenses_user_date_idx on public.expenses (user_id, date desc);
 create index categories_user_idx on public.categories (user_id);
+create index subscriptions_user_idx on public.subscriptions (user_id);
 
 -- Row Level Security: each user can only touch their own rows
 alter table public.categories enable row level security;
 alter table public.expenses enable row level security;
+alter table public.subscriptions enable row level security;
 
 create policy "own categories" on public.categories
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy "own expenses" on public.expenses
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "own subscriptions" on public.subscriptions
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Keep updated_at fresh on every update
@@ -53,4 +75,7 @@ create trigger categories_updated_at before update on public.categories
   for each row execute function public.set_updated_at();
 
 create trigger expenses_updated_at before update on public.expenses
+  for each row execute function public.set_updated_at();
+
+create trigger subscriptions_updated_at before update on public.subscriptions
   for each row execute function public.set_updated_at();

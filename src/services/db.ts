@@ -5,6 +5,9 @@ import {
   Category,
   CreateCategoryInput,
   UpdateCategoryInput,
+  Subscription,
+  CreateSubscriptionInput,
+  UpdateSubscriptionInput,
 } from '@/types';
 import { getSupabase } from '@/lib/supabase';
 import { toInputDate, fromInputDate } from '@/utils/dates';
@@ -37,6 +40,20 @@ interface CategoryRow {
   updated_at: string;
 }
 
+interface SubscriptionRow {
+  id: string;
+  name: string;
+  amount: number;
+  cadence: Subscription['cadence'];
+  billing_day: number;
+  billing_month: number | null;
+  payment_method: Subscription['paymentMethod'] | null;
+  bank: string | null;
+  status: Subscription['status'];
+  created_at: string;
+  updated_at: string;
+}
+
 function mapExpense(row: ExpenseRow): Expense {
   return {
     id: row.id,
@@ -62,6 +79,36 @@ function mapCategory(row: CategoryRow): Category {
     budget: row.budget != null ? Number(row.budget) : undefined,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
+  };
+}
+
+function mapSubscription(row: SubscriptionRow): Subscription {
+  return {
+    id: row.id,
+    name: row.name,
+    amount: Number(row.amount),
+    cadence: row.cadence,
+    billingDay: row.billing_day,
+    billingMonth: row.billing_month ?? undefined,
+    paymentMethod: row.payment_method ?? undefined,
+    bank: row.bank ?? undefined,
+    status: row.status,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
+}
+
+function subscriptionToRow(input: CreateSubscriptionInput, userId: string) {
+  return {
+    user_id: userId,
+    name: input.name,
+    amount: input.amount,
+    cadence: input.cadence,
+    billing_day: input.billingDay,
+    billing_month: input.billingMonth ?? null,
+    payment_method: input.paymentMethod ?? null,
+    bank: input.bank ?? null,
+    status: input.status ?? 'active',
   };
 }
 
@@ -197,11 +244,65 @@ export const db = {
     throwIf(error);
   },
 
+  async fetchSubscriptions(): Promise<Subscription[]> {
+    const { data, error } = await getSupabase()
+      .from('subscriptions')
+      .select('*')
+      .order('created_at', { ascending: true });
+    throwIf(error);
+    return (data as SubscriptionRow[]).map(mapSubscription);
+  },
+
+  async createSubscription(
+    input: CreateSubscriptionInput,
+    userId: string
+  ): Promise<Subscription> {
+    const { data, error } = await getSupabase()
+      .from('subscriptions')
+      .insert(subscriptionToRow(input, userId))
+      .select()
+      .single();
+    throwIf(error);
+    return mapSubscription(data as SubscriptionRow);
+  },
+
+  async updateSubscription(input: UpdateSubscriptionInput): Promise<Subscription> {
+    const { id, ...fields } = input;
+    const patch: Record<string, unknown> = {};
+    if ('name' in fields) patch.name = fields.name;
+    if ('amount' in fields) patch.amount = fields.amount;
+    if ('cadence' in fields) patch.cadence = fields.cadence;
+    if ('billingDay' in fields) patch.billing_day = fields.billingDay;
+    if ('billingMonth' in fields) patch.billing_month = fields.billingMonth ?? null;
+    if ('paymentMethod' in fields) patch.payment_method = fields.paymentMethod ?? null;
+    if ('bank' in fields) patch.bank = fields.bank ?? null;
+    if ('status' in fields) patch.status = fields.status;
+
+    const { data, error } = await getSupabase()
+      .from('subscriptions')
+      .update(patch)
+      .eq('id', id)
+      .select()
+      .single();
+    throwIf(error);
+    return mapSubscription(data as SubscriptionRow);
+  },
+
+  async deleteSubscription(id: string): Promise<void> {
+    const { error } = await getSupabase().from('subscriptions').delete().eq('id', id);
+    throwIf(error);
+  },
+
   async clearAll(userId: string): Promise<void> {
     const supabase = getSupabase();
     const expenses = await supabase.from('expenses').delete().eq('user_id', userId);
     throwIf(expenses.error);
     const categories = await supabase.from('categories').delete().eq('user_id', userId);
     throwIf(categories.error);
+    const subscriptions = await supabase
+      .from('subscriptions')
+      .delete()
+      .eq('user_id', userId);
+    throwIf(subscriptions.error);
   },
 };
