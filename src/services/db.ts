@@ -1,7 +1,7 @@
 import {
-  Expense,
-  CreateExpenseInput,
-  UpdateExpenseInput,
+  Transaction,
+  CreateTransactionInput,
+  UpdateTransactionInput,
   Category,
   CreateCategoryInput,
   UpdateCategoryInput,
@@ -17,13 +17,14 @@ import { toInputDate, fromInputDate } from '@/utils/dates';
  * so user_id must match the signed-in user on inserts.
  */
 
-interface ExpenseRow {
+interface TransactionRow {
   id: string;
+  type: Transaction['type'];
   amount: number;
   description: string;
   category: string;
   date: string;
-  payment_method: Expense['paymentMethod'] | null;
+  payment_method: Transaction['paymentMethod'] | null;
   bank: string | null;
   notes: string | null;
   created_at: string;
@@ -33,6 +34,7 @@ interface ExpenseRow {
 interface CategoryRow {
   id: string;
   name: string;
+  type: Category['type'];
   icon: string | null;
   color: string | null;
   budget: number | null;
@@ -54,9 +56,10 @@ interface SubscriptionRow {
   updated_at: string;
 }
 
-function mapExpense(row: ExpenseRow): Expense {
+function mapTransaction(row: TransactionRow): Transaction {
   return {
     id: row.id,
+    type: row.type,
     amount: Number(row.amount),
     description: row.description,
     category: row.category,
@@ -74,6 +77,7 @@ function mapCategory(row: CategoryRow): Category {
   return {
     id: row.id,
     name: row.name,
+    type: row.type,
     icon: row.icon ?? undefined,
     color: row.color ?? undefined,
     budget: row.budget != null ? Number(row.budget) : undefined,
@@ -112,9 +116,10 @@ function subscriptionToRow(input: CreateSubscriptionInput, userId: string) {
   };
 }
 
-function expenseToRow(input: CreateExpenseInput, userId: string) {
+function transactionToRow(input: CreateTransactionInput, userId: string) {
   return {
     user_id: userId,
+    type: input.type,
     amount: input.amount,
     description: input.description,
     category: input.category,
@@ -129,6 +134,7 @@ function categoryToRow(input: CreateCategoryInput, userId: string) {
   return {
     user_id: userId,
     name: input.name,
+    type: input.type,
     icon: input.icon ?? null,
     color: input.color ?? null,
     budget: input.budget ?? null,
@@ -140,38 +146,45 @@ function throwIf(error: { message: string } | null): void {
 }
 
 export const db = {
-  async fetchExpenses(): Promise<Expense[]> {
+  async fetchTransactions(): Promise<Transaction[]> {
     const { data, error } = await getSupabase()
-      .from('expenses')
+      .from('transactions')
       .select('*')
       .order('date', { ascending: false })
       .order('created_at', { ascending: false });
     throwIf(error);
-    return (data as ExpenseRow[]).map(mapExpense);
+    return (data as TransactionRow[]).map(mapTransaction);
   },
 
-  async createExpense(input: CreateExpenseInput, userId: string): Promise<Expense> {
+  async createTransaction(
+    input: CreateTransactionInput,
+    userId: string
+  ): Promise<Transaction> {
     const { data, error } = await getSupabase()
-      .from('expenses')
-      .insert(expenseToRow(input, userId))
+      .from('transactions')
+      .insert(transactionToRow(input, userId))
       .select()
       .single();
     throwIf(error);
-    return mapExpense(data as ExpenseRow);
+    return mapTransaction(data as TransactionRow);
   },
 
-  async createExpenses(inputs: CreateExpenseInput[], userId: string): Promise<void> {
+  async createTransactions(
+    inputs: CreateTransactionInput[],
+    userId: string
+  ): Promise<void> {
     const { error } = await getSupabase()
-      .from('expenses')
-      .insert(inputs.map(input => expenseToRow(input, userId)));
+      .from('transactions')
+      .insert(inputs.map(input => transactionToRow(input, userId)));
     throwIf(error);
   },
 
-  async updateExpense(input: UpdateExpenseInput): Promise<Expense> {
+  async updateTransaction(input: UpdateTransactionInput): Promise<Transaction> {
     const { id, ...fields } = input;
     // Explicit nulls so clearing a field (e.g. bank after a payment-method
     // change) actually persists — undefined keys are dropped in JSON.
     const patch: Record<string, unknown> = {};
+    if ('type' in fields) patch.type = fields.type;
     if ('amount' in fields) patch.amount = fields.amount;
     if ('description' in fields) patch.description = fields.description;
     if ('category' in fields) patch.category = fields.category;
@@ -181,17 +194,17 @@ export const db = {
     if ('notes' in fields) patch.notes = fields.notes ?? null;
 
     const { data, error } = await getSupabase()
-      .from('expenses')
+      .from('transactions')
       .update(patch)
       .eq('id', id)
       .select()
       .single();
     throwIf(error);
-    return mapExpense(data as ExpenseRow);
+    return mapTransaction(data as TransactionRow);
   },
 
-  async deleteExpense(id: string): Promise<void> {
-    const { error } = await getSupabase().from('expenses').delete().eq('id', id);
+  async deleteTransaction(id: string): Promise<void> {
+    const { error } = await getSupabase().from('transactions').delete().eq('id', id);
     throwIf(error);
   },
 
@@ -225,6 +238,7 @@ export const db = {
     const { id, ...fields } = input;
     const patch: Record<string, unknown> = {};
     if ('name' in fields) patch.name = fields.name;
+    if ('type' in fields) patch.type = fields.type;
     if ('icon' in fields) patch.icon = fields.icon ?? null;
     if ('color' in fields) patch.color = fields.color ?? null;
     if ('budget' in fields) patch.budget = fields.budget ?? null;
@@ -295,8 +309,11 @@ export const db = {
 
   async clearAll(userId: string): Promise<void> {
     const supabase = getSupabase();
-    const expenses = await supabase.from('expenses').delete().eq('user_id', userId);
-    throwIf(expenses.error);
+    const transactions = await supabase
+      .from('transactions')
+      .delete()
+      .eq('user_id', userId);
+    throwIf(transactions.error);
     const categories = await supabase.from('categories').delete().eq('user_id', userId);
     throwIf(categories.error);
     const subscriptions = await supabase

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Plus, Sparkles, TrendingDown, TrendingUp } from 'lucide-react';
-import { useExpenses } from '@/context/expenses-context';
+import { useTransactions } from '@/context/transactions-context';
 import {
   lastMonths,
   startOfMonth,
@@ -14,6 +14,7 @@ import {
   fromInputDate,
   type DateRange,
 } from '@/utils/dates';
+import { cn } from '@/lib/utils';
 import { formatCurrency, formatDate } from '@/utils/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,9 +33,9 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { DonutChart } from '@/components/charts/donut-chart';
-import { TrendChart } from '@/components/charts/trend-chart';
+import { IncomeExpenseChart } from '@/components/charts/income-expense-chart';
 import { BudgetBar } from '@/features/categories/budget-bar';
-import { ExpenseFormDialog } from '@/features/expenses/expense-form-dialog';
+import { TransactionFormDialog } from '@/features/transactions/transaction-form-dialog';
 
 const FALLBACK_COLORS = ['#796e8e', '#c9a44a', '#c07349', '#6b83a5', '#b0788f'];
 
@@ -48,14 +49,28 @@ const RANGE_OPTIONS = [
   { label: 'Custom range', value: 'custom' },
 ] as const;
 
+function toSlices(
+  byCategory: Map<string, number>,
+  colorFor: (name: string) => string | undefined
+) {
+  return [...byCategory.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, value], i) => ({
+      label: name,
+      value,
+      color: colorFor(name) ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length],
+    }));
+}
+
 export default function DashboardPage() {
-  const { hydrated, expenses, categories, settings, loadSampleData } =
-    useExpenses();
+  const { hydrated, transactions, categories, settings, loadSampleData } =
+    useTransactions();
   const [formOpen, setFormOpen] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [rangeFilter, setRangeFilter] = useState<string>('thisMonth');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [donutType, setDonutType] = useState<'expense' | 'income'>('expense');
 
   const currency = settings.currency;
   const now = new Date();
@@ -83,7 +98,7 @@ export default function DashboardPage() {
     };
   }, [rangeFilter, customStart, customEnd]);
 
-  // Equal-length window immediately preceding the range, for the delta comparison
+  // Equal-length window immediately preceding the range, for delta comparisons
   const prevRange = useMemo<DateRange | null>(() => {
     if (!range) return null;
     const span = range.end.getTime() - range.start.getTime();
@@ -91,11 +106,13 @@ export default function DashboardPage() {
   }, [range]);
 
   const {
-    periodTotal,
-    prevTotal,
-    todayTotal,
-    periodCount,
-    donutSlices,
+    periodIncome,
+    periodExpense,
+    prevIncome,
+    prevExpense,
+    todayExpense,
+    expenseSlices,
+    incomeSlices,
     trendPoints,
     budgeted,
     recent,
@@ -104,89 +121,100 @@ export default function DashboardPage() {
     const monthEnd = endOfMonth(now);
     const dayStart = startOfDay(now);
 
-    let periodTotal = 0;
-    let prevTotal = 0;
-    let todayTotal = 0;
-    let periodCount = 0;
-    const byCategory = new Map<string, number>();
+    let periodIncome = 0;
+    let periodExpense = 0;
+    let prevIncome = 0;
+    let prevExpense = 0;
+    let todayExpense = 0;
+    const expenseByCategory = new Map<string, number>();
+    const incomeByCategory = new Map<string, number>();
     const monthByCategory = new Map<string, number>();
 
-    for (const expense of expenses) {
-      const date = new Date(expense.date);
+    for (const t of transactions) {
+      const date = new Date(t.date);
+      const isIncome = t.type === 'income';
 
       if (!range || (date >= range.start && date <= range.end)) {
-        periodTotal += expense.amount;
-        periodCount += 1;
-        byCategory.set(
-          expense.category,
-          (byCategory.get(expense.category) ?? 0) + expense.amount
-        );
+        if (isIncome) {
+          periodIncome += t.amount;
+          incomeByCategory.set(
+            t.category,
+            (incomeByCategory.get(t.category) ?? 0) + t.amount
+          );
+        } else {
+          periodExpense += t.amount;
+          expenseByCategory.set(
+            t.category,
+            (expenseByCategory.get(t.category) ?? 0) + t.amount
+          );
+        }
       }
       if (prevRange && date >= prevRange.start && date < prevRange.end) {
-        prevTotal += expense.amount;
+        if (isIncome) prevIncome += t.amount;
+        else prevExpense += t.amount;
       }
-      // Budgets are a monthly concept, so track the current calendar month separately
-      if (date >= monthStart && date <= monthEnd) {
+      // Budgets are a monthly, expense-only concept
+      if (!isIncome && date >= monthStart && date <= monthEnd) {
         monthByCategory.set(
-          expense.category,
-          (monthByCategory.get(expense.category) ?? 0) + expense.amount
+          t.category,
+          (monthByCategory.get(t.category) ?? 0) + t.amount
         );
       }
-      if (date >= dayStart) todayTotal += expense.amount;
+      if (!isIncome && date >= dayStart) todayExpense += t.amount;
     }
 
-    const donutSlices = [...byCategory.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, value], i) => ({
-        label: name,
-        value,
-        color:
-          categories.find(c => c.name === name)?.color ??
-          FALLBACK_COLORS[i % FALLBACK_COLORS.length],
-      }));
+    const colorFor = (name: string) =>
+      categories.find(c => c.name === name)?.color;
 
-    const trendPoints = lastMonths(6).map((month, i, arr) => ({
-      label: month.label,
-      value: expenses
-        .filter(e => {
-          const d = new Date(e.date);
-          return d >= month.start && d <= month.end;
-        })
-        .reduce((sum, e) => sum + e.amount, 0),
-      emphasis: i === arr.length - 1,
-    }));
+    const trendPoints = lastMonths(6).map((month, i, arr) => {
+      let income = 0;
+      let expense = 0;
+      for (const t of transactions) {
+        const d = new Date(t.date);
+        if (d >= month.start && d <= month.end) {
+          if (t.type === 'income') income += t.amount;
+          else expense += t.amount;
+        }
+      }
+      return { label: month.label, income, expense, emphasis: i === arr.length - 1 };
+    });
 
     const budgeted = categories
-      .filter(c => c.budget != null && c.budget > 0)
-      .map(c => ({
-        category: c,
-        spent: monthByCategory.get(c.name) ?? 0,
-      }))
+      .filter(c => c.type === 'expense' && c.budget != null && c.budget > 0)
+      .map(c => ({ category: c, spent: monthByCategory.get(c.name) ?? 0 }))
       .sort((a, b) => b.spent / b.category.budget! - a.spent / a.category.budget!);
 
     return {
-      periodTotal,
-      prevTotal,
-      todayTotal,
-      periodCount,
-      donutSlices,
+      periodIncome,
+      periodExpense,
+      prevIncome,
+      prevExpense,
+      todayExpense,
+      expenseSlices: toSlices(expenseByCategory, colorFor),
+      incomeSlices: toSlices(incomeByCategory, colorFor),
       trendPoints,
       budgeted,
-      recent: expenses.slice(0, 6),
+      recent: transactions.slice(0, 6),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expenses, categories, range, prevRange]);
+  }, [transactions, categories, range, prevRange]);
 
   const monthName = now.toLocaleDateString('en-US', {
     month: 'long',
     year: 'numeric',
   });
-  const delta = prevTotal > 0 ? (periodTotal - prevTotal) / prevTotal : null;
-  const totalBudget = budgeted.reduce((sum, b) => sum + (b.category.budget ?? 0), 0);
-  const totalBudgetSpent = budgeted.reduce((sum, b) => sum + b.spent, 0);
+  const net = periodIncome - periodExpense;
+  const savingsRate = periodIncome > 0 ? net / periodIncome : null;
+  const incomeDelta =
+    prevIncome > 0 ? (periodIncome - prevIncome) / prevIncome : null;
+  const expenseDelta =
+    prevExpense > 0 ? (periodExpense - prevExpense) / prevExpense : null;
   const categoryByName = new Map(categories.map(c => [c.name, c]));
 
-  if (hydrated && expenses.length === 0) {
+  const donutSlices = donutType === 'expense' ? expenseSlices : incomeSlices;
+  const donutTotal = donutType === 'expense' ? periodExpense : periodIncome;
+
+  if (hydrated && transactions.length === 0) {
     return (
       <div className="mx-auto max-w-xl py-16 text-center">
         <p className="eyebrow mb-2">{monthName}</p>
@@ -194,7 +222,7 @@ export default function DashboardPage() {
           A fresh ledger
         </h1>
         <p className="mx-auto mt-3 max-w-md text-muted-foreground">
-          Nothing has been recorded yet. Add your first expense, or load a few
+          Nothing has been recorded yet. Add your first entry, or load a few
           months of sample data to see the dashboard come alive.
         </p>
         <div className="mt-6 flex justify-center gap-3">
@@ -213,7 +241,7 @@ export default function DashboardPage() {
             <Sparkles /> {seeding ? 'Loading…' : 'Load sample data'}
           </Button>
         </div>
-        <ExpenseFormDialog open={formOpen} onOpenChange={setFormOpen} />
+        <TransactionFormDialog open={formOpen} onOpenChange={setFormOpen} />
       </div>
     );
   }
@@ -275,36 +303,87 @@ export default function DashboardPage() {
         <Card className="rise-in" style={{ '--stagger': 0 } as React.CSSProperties}>
           <CardHeader className="pb-2">
             <CardDescription className="eyebrow">
-              Spent · {rangeLabel}
+              Income · {rangeLabel}
             </CardDescription>
-            <CardTitle className="tabular text-2xl sm:text-3xl">
-              {formatCurrency(periodTotal, currency)}
+            <CardTitle className="tabular text-2xl text-primary sm:text-3xl">
+              {formatCurrency(periodIncome, currency)}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {delta !== null ? (
+            {incomeDelta !== null ? (
               <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                {delta >= 0 ? (
-                  <TrendingUp className="size-3.5 text-terracotta" />
+                {incomeDelta >= 0 ? (
+                  <TrendingUp className="size-3.5 text-primary" />
                 ) : (
-                  <TrendingDown className="size-3.5 text-primary" />
+                  <TrendingDown className="size-3.5 text-terracotta" />
                 )}
-                <span className={delta >= 0 ? 'text-terracotta' : 'text-primary'}>
-                  {Math.abs(delta * 100).toFixed(0)}%
+                <span className={incomeDelta >= 0 ? 'text-primary' : 'text-terracotta'}>
+                  {Math.abs(incomeDelta * 100).toFixed(0)}%
                 </span>
                 vs prior period
               </p>
             ) : (
-              <p className="text-xs text-muted-foreground">No prior period to compare</p>
+              <p className="text-xs text-muted-foreground">No prior period</p>
             )}
           </CardContent>
         </Card>
 
         <Card className="rise-in" style={{ '--stagger': 1 } as React.CSSProperties}>
           <CardHeader className="pb-2">
+            <CardDescription className="eyebrow">
+              Spending · {rangeLabel}
+            </CardDescription>
+            <CardTitle className="tabular text-2xl sm:text-3xl">
+              {formatCurrency(periodExpense, currency)}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {expenseDelta !== null ? (
+              <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                {expenseDelta >= 0 ? (
+                  <TrendingUp className="size-3.5 text-terracotta" />
+                ) : (
+                  <TrendingDown className="size-3.5 text-primary" />
+                )}
+                <span className={expenseDelta >= 0 ? 'text-terracotta' : 'text-primary'}>
+                  {Math.abs(expenseDelta * 100).toFixed(0)}%
+                </span>
+                vs prior period
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">No prior period</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rise-in" style={{ '--stagger': 2 } as React.CSSProperties}>
+          <CardHeader className="pb-2">
+            <CardDescription className="eyebrow">Net · {rangeLabel}</CardDescription>
+            <CardTitle
+              className={cn(
+                'tabular text-2xl sm:text-3xl',
+                net > 0 && 'text-primary',
+                net < 0 && 'text-terracotta'
+              )}
+            >
+              {net >= 0 ? '+' : ''}
+              {formatCurrency(net, currency)}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">
+              {savingsRate !== null
+                ? `${Math.round(savingsRate * 100)}% of income saved`
+                : 'No income in this period'}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="rise-in" style={{ '--stagger': 3 } as React.CSSProperties}>
+          <CardHeader className="pb-2">
             <CardDescription className="eyebrow">Spent today</CardDescription>
             <CardTitle className="tabular text-2xl sm:text-3xl">
-              {formatCurrency(todayTotal, currency)}
+              {formatCurrency(todayExpense, currency)}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -313,54 +392,51 @@ export default function DashboardPage() {
             </p>
           </CardContent>
         </Card>
-
-        <Card className="rise-in" style={{ '--stagger': 2 } as React.CSSProperties}>
-          <CardHeader className="pb-2">
-            <CardDescription className="eyebrow">Budget used</CardDescription>
-            <CardTitle className="tabular text-2xl sm:text-3xl">
-              {totalBudget > 0
-                ? `${Math.round((totalBudgetSpent / totalBudget) * 100)}%`
-                : '—'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">
-              {totalBudget > 0
-                ? `${formatCurrency(totalBudgetSpent, currency)} of ${formatCurrency(totalBudget, currency)}`
-                : 'No budgets set yet'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="rise-in" style={{ '--stagger': 3 } as React.CSSProperties}>
-          <CardHeader className="pb-2">
-            <CardDescription className="eyebrow">Entries</CardDescription>
-            <CardTitle className="tabular text-2xl sm:text-3xl">{periodCount}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">{rangeLabel}</p>
-          </CardContent>
-        </Card>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Category breakdown */}
+        {/* Category / source breakdown */}
         <Card className="rise-in" style={{ '--stagger': 4 } as React.CSSProperties}>
-          <CardHeader>
-            <CardTitle className="font-display text-xl">By category</CardTitle>
-            <CardDescription>Where your money went</CardDescription>
+          <CardHeader className="flex-row items-start justify-between gap-2 space-y-0">
+            <div>
+              <CardTitle className="font-display text-xl">
+                {donutType === 'expense' ? 'By category' : 'By source'}
+              </CardTitle>
+              <CardDescription>
+                {donutType === 'expense'
+                  ? 'Where your money went'
+                  : 'Where your money came from'}
+              </CardDescription>
+            </div>
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-xs">
+              {(['expense', 'income'] as const).map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setDonutType(t)}
+                  className={cn(
+                    'rounded-md px-2.5 py-1 font-medium capitalize transition-colors',
+                    donutType === t
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {t === 'expense' ? 'Expenses' : 'Income'}
+                </button>
+              ))}
+            </div>
           </CardHeader>
           <CardContent>
             {donutSlices.length === 0 ? (
               <p className="py-10 text-center text-sm text-muted-foreground">
-                No entries in this period yet.
+                No {donutType === 'expense' ? 'spending' : 'income'} in this period yet.
               </p>
             ) : (
               <div className="flex flex-col items-center gap-6 sm:flex-row">
                 <DonutChart
                   slices={donutSlices}
-                  centerValue={formatCurrency(periodTotal, currency)}
-                  centerLabel="spent"
+                  centerValue={formatCurrency(donutTotal, currency)}
+                  centerLabel={donutType === 'expense' ? 'spent' : 'earned'}
                 />
                 <ul className="w-full flex-1 space-y-1.5">
                   {donutSlices.slice(0, 6).map(slice => (
@@ -388,14 +464,14 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Six-month trend */}
+        {/* Six-month income vs spending */}
         <Card className="rise-in" style={{ '--stagger': 5 } as React.CSSProperties}>
           <CardHeader>
-            <CardTitle className="font-display text-xl">The trend</CardTitle>
-            <CardDescription>Last six months of spending</CardDescription>
+            <CardTitle className="font-display text-xl">Income vs spending</CardTitle>
+            <CardDescription>The last six months, side by side</CardDescription>
           </CardHeader>
           <CardContent>
-            <TrendChart
+            <IncomeExpenseChart
               points={trendPoints}
               formatValue={value => formatCurrency(value, currency)}
             />
@@ -456,23 +532,28 @@ export default function DashboardPage() {
             ) : (
               <>
                 <ul className="space-y-2.5">
-                  {recent.map(expense => (
-                    <li key={expense.id} className="flex items-baseline text-sm">
-                      <span className="mr-2 flex min-w-0 items-center gap-2">
-                        <span aria-hidden>
-                          {categoryByName.get(expense.category)?.icon ?? '📦'}
+                  {recent.map(t => {
+                    const isIncome = t.type === 'income';
+                    return (
+                      <li key={t.id} className="flex items-baseline text-sm">
+                        <span className="mr-2 flex min-w-0 items-center gap-2">
+                          <span aria-hidden>
+                            {categoryByName.get(t.category)?.icon ??
+                              (isIncome ? '💰' : '📦')}
+                          </span>
+                          <span className="truncate">{t.description}</span>
                         </span>
-                        <span className="truncate">{expense.description}</span>
-                      </span>
-                      <span className="leader-dots" aria-hidden />
-                      <span className="tabular">
-                        {formatCurrency(expense.amount, currency)}
-                      </span>
-                    </li>
-                  ))}
+                        <span className="leader-dots" aria-hidden />
+                        <span className={cn('tabular', isIncome && 'text-primary')}>
+                          {isIncome ? '+' : ''}
+                          {formatCurrency(t.amount, currency)}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
                 <Button asChild variant="ghost" size="sm" className="mt-4 -ml-2">
-                  <Link href="/expenses">
+                  <Link href="/transactions">
                     Open the full ledger <ArrowRight />
                   </Link>
                 </Button>
@@ -482,7 +563,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <ExpenseFormDialog open={formOpen} onOpenChange={setFormOpen} />
+      <TransactionFormDialog open={formOpen} onOpenChange={setFormOpen} />
     </div>
   );
 }

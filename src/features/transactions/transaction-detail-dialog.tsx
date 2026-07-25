@@ -1,10 +1,12 @@
 'use client';
 
 import { Pencil, Trash2 } from 'lucide-react';
-import { Expense, Category } from '@/types';
+import { Transaction, Category } from '@/types';
 import { PAYMENT_METHODS } from '@/lib/constants';
+import { cn } from '@/lib/utils';
 import { formatCurrency, formatDate, formatRelativeTime } from '@/utils/formatters';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -14,36 +16,37 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
-interface ExpenseDetailDialogProps {
-  /** The expense to show; null keeps the dialog closed */
-  expense: Expense | null;
+interface TransactionDetailDialogProps {
+  /** The transaction to show; null keeps the dialog closed */
+  transaction: Transaction | null;
   categories: Category[];
   currency: string;
   onOpenChange: (open: boolean) => void;
-  onEdit: (expense: Expense) => void;
-  onDelete: (expense: Expense) => void;
+  onEdit: (transaction: Transaction) => void;
+  onDelete: (transaction: Transaction) => void;
 }
 
 /** Read-only detail view for a single ledger entry, with edit/delete shortcuts */
-export function ExpenseDetailDialog({
-  expense,
+export function TransactionDetailDialog({
+  transaction,
   categories,
   currency,
   onOpenChange,
   onEdit,
   onDelete,
-}: ExpenseDetailDialogProps) {
-  const category = expense
-    ? categories.find(c => c.name === expense.category)
+}: TransactionDetailDialogProps) {
+  const category = transaction
+    ? categories.find(c => c.name === transaction.category)
     : undefined;
-  const methodLabel = expense?.paymentMethod
-    ? PAYMENT_METHODS.find(m => m.value === expense.paymentMethod)?.label
+  const methodLabel = transaction?.paymentMethod
+    ? PAYMENT_METHODS.find(m => m.value === transaction.paymentMethod)?.label
     : undefined;
+  const isIncome = transaction?.type === 'income';
 
   return (
-    <Dialog open={expense != null} onOpenChange={onOpenChange}>
+    <Dialog open={transaction != null} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        {expense && (
+        {transaction && (
           <>
             <DialogHeader>
               <div className="flex items-center gap-3">
@@ -52,22 +55,39 @@ export function ExpenseDetailDialog({
                   style={{ backgroundColor: `${category?.color ?? '#B4B4B4'}33` }}
                   aria-hidden
                 >
-                  {category?.icon ?? '📦'}
+                  {category?.icon ?? (isIncome ? '💰' : '📦')}
                 </span>
                 <div className="min-w-0">
-                  <p className="eyebrow">{expense.category}</p>
+                  <p className="eyebrow flex items-center gap-2">
+                    {transaction.category}
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        'px-1.5 py-0 text-[10px] font-normal capitalize',
+                        isIncome && 'border-primary/40 text-primary'
+                      )}
+                    >
+                      {transaction.type}
+                    </Badge>
+                  </p>
                   <DialogTitle className="font-display text-2xl leading-tight">
-                    {expense.description}
+                    {transaction.description}
                   </DialogTitle>
                 </div>
               </div>
               <DialogDescription className="sr-only">
-                Details for {expense.description} in {expense.category}
+                Details for {transaction.description} in {transaction.category}
               </DialogDescription>
             </DialogHeader>
 
-            <p className="tabular font-display text-4xl font-semibold tracking-tight">
-              {formatCurrency(expense.amount, currency)}
+            <p
+              className={cn(
+                'tabular font-display text-4xl font-semibold tracking-tight',
+                isIncome && 'text-primary'
+              )}
+            >
+              {isIncome ? '+' : ''}
+              {formatCurrency(transaction.amount, currency)}
             </p>
 
             <dl className="divide-y divide-border/70 text-sm">
@@ -75,17 +95,19 @@ export function ExpenseDetailDialog({
                 <dt className="text-muted-foreground">Date</dt>
                 <span className="leader-dots" aria-hidden />
                 <dd className="tabular">
-                  {formatDate(new Date(expense.date))}
+                  {formatDate(new Date(transaction.date))}
                 </dd>
               </div>
               {methodLabel && (
                 <div className="flex items-baseline py-2.5">
-                  <dt className="text-muted-foreground">Payment</dt>
+                  <dt className="text-muted-foreground">
+                    {isIncome ? 'Received via' : 'Payment'}
+                  </dt>
                   <span className="leader-dots" aria-hidden />
                   <dd className="text-right">
                     {methodLabel}
-                    {expense.bank && (
-                      <span className="text-muted-foreground"> · {expense.bank}</span>
+                    {transaction.bank && (
+                      <span className="text-muted-foreground"> · {transaction.bank}</span>
                     )}
                   </dd>
                 </div>
@@ -93,15 +115,15 @@ export function ExpenseDetailDialog({
               <div className="flex items-baseline py-2.5">
                 <dt className="text-muted-foreground">Added</dt>
                 <span className="leader-dots" aria-hidden />
-                <dd>{formatRelativeTime(new Date(expense.createdAt))}</dd>
+                <dd>{formatRelativeTime(new Date(transaction.createdAt))}</dd>
               </div>
             </dl>
 
-            {expense.notes && (
+            {transaction.notes && (
               <div className="space-y-1.5">
                 <p className="eyebrow">Note</p>
                 <p className="rounded-md border bg-muted/40 p-3 text-sm whitespace-pre-wrap">
-                  {expense.notes}
+                  {transaction.notes}
                 </p>
               </div>
             )}
@@ -110,11 +132,11 @@ export function ExpenseDetailDialog({
               <Button
                 variant="ghost"
                 className="text-muted-foreground hover:text-destructive sm:mr-auto"
-                onClick={() => onDelete(expense)}
+                onClick={() => onDelete(transaction)}
               >
                 <Trash2 className="size-4" /> Delete
               </Button>
-              <Button onClick={() => onEdit(expense)}>
+              <Button onClick={() => onEdit(transaction)}>
                 <Pencil className="size-4" /> Edit
               </Button>
             </DialogFooter>

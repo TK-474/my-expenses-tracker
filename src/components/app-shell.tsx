@@ -18,7 +18,7 @@ import { useAuth } from '@/context/auth-context';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', shortLabel: 'Home', icon: LayoutDashboard },
-  { href: '/expenses', label: 'Expenses', shortLabel: 'Expenses', icon: ReceiptText },
+  { href: '/transactions', label: 'Transactions', shortLabel: 'Ledger', icon: ReceiptText },
   { href: '/subscriptions', label: 'Subscriptions', shortLabel: 'Subs', icon: Repeat },
   { href: '/categories', label: 'Categories', shortLabel: 'Tags', icon: Tags },
   { href: '/settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },

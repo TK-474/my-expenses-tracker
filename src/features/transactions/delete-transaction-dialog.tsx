@@ -1,7 +1,7 @@
 'use client';
 
-import { Expense } from '@/types';
-import { useExpenses } from '@/context/expenses-context';
+import { Transaction } from '@/types';
+import { useTransactions } from '@/context/transactions-context';
 import { formatCurrency } from '@/utils/formatters';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,30 +13,30 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
-interface DeleteExpenseDialogProps {
-  expense: Expense | null;
+interface DeleteTransactionDialogProps {
+  transaction: Transaction | null;
   onOpenChange: (open: boolean) => void;
 }
 
-export function DeleteExpenseDialog({
-  expense,
+export function DeleteTransactionDialog({
+  transaction,
   onOpenChange,
-}: DeleteExpenseDialogProps) {
-  const { deleteExpense, settings } = useExpenses();
+}: DeleteTransactionDialogProps) {
+  const { deleteTransaction, settings } = useTransactions();
 
   return (
-    <Dialog open={!!expense} onOpenChange={onOpenChange}>
+    <Dialog open={!!transaction} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle className="font-display text-2xl">
             Strike this entry?
           </DialogTitle>
           <DialogDescription>
-            {expense && (
+            {transaction && (
               <>
-                &ldquo;{expense.description}&rdquo; for{' '}
+                &ldquo;{transaction.description}&rdquo; for{' '}
                 <span className="tabular">
-                  {formatCurrency(expense.amount, settings.currency)}
+                  {formatCurrency(transaction.amount, settings.currency)}
                 </span>{' '}
                 will be removed from your ledger. This cannot be undone.
               </>
@@ -50,8 +50,8 @@ export function DeleteExpenseDialog({
           <Button
             variant="destructive"
             onClick={async () => {
-              if (expense) {
-                await deleteExpense(expense.id).catch(console.error);
+              if (transaction) {
+                await deleteTransaction(transaction.id).catch(console.error);
               }
               onOpenChange(false);
             }}

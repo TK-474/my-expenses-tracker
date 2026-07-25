@@ -1,4 +1,4 @@
-import { Expense } from '@/types';
+import { Transaction } from '@/types';
 import { toInputDate } from './dates';
 
 function escapeCsv(value: string): string {
@@ -8,22 +8,23 @@ function escapeCsv(value: string): string {
   return value;
 }
 
-export function expensesToCsv(expenses: Expense[]): string {
-  const header = ['Date', 'Description', 'Category', 'Amount', 'Payment Method', 'Bank', 'Notes'];
-  const rows = expenses.map(e => [
-    toInputDate(new Date(e.date)),
-    escapeCsv(e.description),
-    escapeCsv(e.category),
-    e.amount.toFixed(2),
-    e.paymentMethod ?? '',
-    escapeCsv(e.bank ?? ''),
-    escapeCsv(e.notes ?? ''),
+export function transactionsToCsv(transactions: Transaction[]): string {
+  const header = ['Date', 'Type', 'Description', 'Category', 'Amount', 'Payment Method', 'Bank', 'Notes'];
+  const rows = transactions.map(t => [
+    toInputDate(new Date(t.date)),
+    t.type,
+    escapeCsv(t.description),
+    escapeCsv(t.category),
+    t.amount.toFixed(2),
+    t.paymentMethod ?? '',
+    escapeCsv(t.bank ?? ''),
+    escapeCsv(t.notes ?? ''),
   ]);
   return [header, ...rows].map(row => row.join(',')).join('\n');
 }
 
-export function downloadCsv(expenses: Expense[], filename = 'expenses.csv'): void {
-  const blob = new Blob([expensesToCsv(expenses)], { type: 'text/csv;charset=utf-8' });
+export function downloadCsv(transactions: Transaction[], filename = 'transactions.csv'): void {
+  const blob = new Blob([transactionsToCsv(transactions)], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

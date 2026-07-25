@@ -11,7 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Subscription } from '@/types';
-import { useExpenses } from '@/context/expenses-context';
+import { useTransactions } from '@/context/transactions-context';
 import { SUBSCRIPTIONS_CATEGORY } from '@/lib/constants';
 import { formatCurrency } from '@/utils/formatters';
 import { daysUntilRenewal, renewalLabel } from '@/utils/subscriptions';
@@ -27,7 +27,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { SubscriptionFormDialog } from '@/features/subscriptions/subscription-form-dialog';
-import { ExpenseFormDialog } from '@/features/expenses/expense-form-dialog';
+import { TransactionFormDialog } from '@/features/transactions/transaction-form-dialog';
 
 const ACCENT = SUBSCRIPTIONS_CATEGORY.color;
 
@@ -38,7 +38,7 @@ export default function SubscriptionsPage() {
     settings,
     updateSubscription,
     deleteSubscription,
-  } = useExpenses();
+  } = useTransactions();
   const currency = settings.currency;
 
   const [formOpen, setFormOpen] = useState(false);
@@ -275,13 +275,14 @@ export default function SubscriptionsPage() {
         subscription={editing}
       />
 
-      {/* Log a payment: opens the normal expense form pre-filled */}
-      <ExpenseFormDialog
+      {/* Log a payment: opens the normal transaction form pre-filled */}
+      <TransactionFormDialog
         open={logging != null}
         onOpenChange={open => { if (!open) setLogging(null); }}
         defaults={
           logging
             ? {
+                type: 'expense',
                 amount: logging.amount,
                 description: logging.name,
                 category: SUBSCRIPTIONS_CATEGORY.name,

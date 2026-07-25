@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { Expense } from '@/types';
-import { useExpenses } from '@/context/expenses-context';
+import { useMemo, useState } from 'react';
+import { Transaction, TransactionType } from '@/types';
+import { useTransactions } from '@/context/transactions-context';
 import { PAYMENT_METHODS, CURRENCIES } from '@/lib/constants';
+import { cn } from '@/lib/utils';
 import { toInputDate, fromInputDate } from '@/utils/dates';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,43 +27,46 @@ import {
 } from '@/components/ui/select';
 
 /** Fields that can pre-fill a new entry (e.g. logging a subscription payment) */
-export type ExpenseDefaults = Partial<
-  Pick<Expense, 'amount' | 'description' | 'category' | 'paymentMethod' | 'bank' | 'notes'>
+export type TransactionDefaults = Partial<
+  Pick<
+    Transaction,
+    'type' | 'amount' | 'description' | 'category' | 'paymentMethod' | 'bank' | 'notes'
+  >
 >;
 
-interface ExpenseFormDialogProps {
+interface TransactionFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** When set, the dialog edits this expense instead of creating one */
-  expense?: Expense | null;
+  /** When set, the dialog edits this transaction instead of creating one */
+  transaction?: Transaction | null;
   /** Pre-fill values for a new entry; ignored when editing */
-  defaults?: ExpenseDefaults;
+  defaults?: TransactionDefaults;
 }
 
-export function ExpenseFormDialog({
+export function TransactionFormDialog({
   open,
   onOpenChange,
-  expense,
+  transaction,
   defaults,
-}: ExpenseFormDialogProps) {
+}: TransactionFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="font-display text-2xl">
-            {expense ? 'Edit entry' : 'New entry'}
+            {transaction ? 'Edit entry' : 'New entry'}
           </DialogTitle>
           <DialogDescription>
-            {expense
+            {transaction
               ? 'Amend this line in your ledger.'
               : 'Record a new line in your ledger.'}
           </DialogDescription>
         </DialogHeader>
         {/* Radix unmounts DialogContent children when closed, so the form
             state below initializes fresh on every open */}
-        <ExpenseForm
-          key={expense?.id ?? 'new'}
-          expense={expense}
+        <TransactionForm
+          key={transaction?.id ?? 'new'}
+          transaction={transaction}
           defaults={defaults}
           onOpenChange={onOpenChange}
         />
@@ -72,6 +76,7 @@ export function ExpenseFormDialog({
 }
 
 interface FormState {
+  type: TransactionType;
   amount: string;
   description: string;
   category: string;
@@ -81,31 +86,40 @@ interface FormState {
   notes: string;
 }
 
-function ExpenseForm({
-  expense,
+function TransactionForm({
+  transaction,
   defaults,
   onOpenChange,
 }: {
-  expense?: Expense | null;
-  defaults?: ExpenseDefaults;
+  transaction?: Transaction | null;
+  defaults?: TransactionDefaults;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { categories, settings, addExpense, updateExpense } = useExpenses();
+  const { categories, settings, addTransaction, updateTransaction } =
+    useTransactions();
+
+  const initialType: TransactionType =
+    transaction?.type ?? defaults?.type ?? 'expense';
+  const firstOfType = (type: TransactionType) =>
+    categories.find(c => c.type === type)?.name ?? '';
+
   const [form, setForm] = useState<FormState>(() =>
-    expense
+    transaction
       ? {
-          amount: String(expense.amount),
-          description: expense.description,
-          category: expense.category,
-          date: toInputDate(new Date(expense.date)),
-          paymentMethod: expense.paymentMethod ?? 'card',
-          bank: expense.bank ?? '',
-          notes: expense.notes ?? '',
+          type: transaction.type,
+          amount: String(transaction.amount),
+          description: transaction.description,
+          category: transaction.category,
+          date: toInputDate(new Date(transaction.date)),
+          paymentMethod: transaction.paymentMethod ?? 'card',
+          bank: transaction.bank ?? '',
+          notes: transaction.notes ?? '',
         }
       : {
+          type: initialType,
           amount: defaults?.amount != null ? String(defaults.amount) : '',
           description: defaults?.description ?? '',
-          category: defaults?.category ?? categories[0]?.name ?? '',
+          category: defaults?.category ?? firstOfType(initialType),
           date: toInputDate(new Date()),
           paymentMethod: defaults?.paymentMethod ?? 'card',
           bank: defaults?.bank ?? '',
@@ -116,11 +130,31 @@ function ExpenseForm({
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
+  const isIncome = form.type === 'income';
   const currencySymbol =
     CURRENCIES.find(c => c.value === settings.currency)?.symbol ?? '$';
+  const typeCategories = useMemo(
+    () => categories.filter(c => c.type === form.type),
+    [categories, form.type]
+  );
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm(prev => ({ ...prev, [key]: value }));
+  }
+
+  function selectType(type: TransactionType) {
+    setForm(prev => {
+      if (prev.type === type) return prev;
+      // Category lists differ by type; keep the current one only if it still fits
+      const stillValid = categories.some(
+        c => c.type === type && c.name === prev.category
+      );
+      return {
+        ...prev,
+        type,
+        category: stillValid ? prev.category : firstOfType(type),
+      };
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -134,7 +168,7 @@ function ExpenseForm({
       nextErrors.description = 'A description is required';
     }
     if (!form.category) {
-      nextErrors.category = 'Pick a category';
+      nextErrors.category = isIncome ? 'Pick a source' : 'Pick a category';
     }
     if (!form.date) {
       nextErrors.date = 'Pick a date';
@@ -143,12 +177,13 @@ function ExpenseForm({
     if (Object.keys(nextErrors).length > 0) return;
 
     const input = {
+      type: form.type,
       amount,
       description: form.description.trim(),
       category: form.category,
       date: fromInputDate(form.date),
-      paymentMethod: form.paymentMethod as Expense['paymentMethod'],
-      // Bank only applies to card and digital wallet payments; cleared if the method changed
+      paymentMethod: form.paymentMethod as Transaction['paymentMethod'],
+      // Bank only applies to card and digital wallet payments; cleared otherwise
       bank:
         form.paymentMethod === 'card' || form.paymentMethod === 'digital'
           ? form.bank.trim() || undefined
@@ -159,10 +194,10 @@ function ExpenseForm({
     setSaving(true);
     setSubmitError('');
     try {
-      if (expense) {
-        await updateExpense({ id: expense.id, ...input });
+      if (transaction) {
+        await updateTransaction({ id: transaction.id, ...input });
       } else {
-        await addExpense(input);
+        await addTransaction(input);
       }
       onOpenChange(false);
     } catch (err) {
@@ -174,6 +209,27 @@ function ExpenseForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Type toggle */}
+      <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+        {(['expense', 'income'] as const).map(t => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => selectType(t)}
+            className={cn(
+              'rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors',
+              form.type === t
+                ? t === 'income'
+                  ? 'bg-background text-primary shadow-sm'
+                  : 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label htmlFor="amount">Amount</Label>
@@ -218,7 +274,7 @@ function ExpenseForm({
         <Label htmlFor="description">Description</Label>
         <Input
           id="description"
-          placeholder="e.g. Weekly groceries"
+          placeholder={isIncome ? 'e.g. Monthly salary' : 'e.g. Weekly groceries'}
           value={form.description}
           onChange={e => set('description', e.target.value)}
           aria-invalid={!!errors.description}
@@ -230,7 +286,7 @@ function ExpenseForm({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <Label>Category</Label>
+          <Label>{isIncome ? 'Source' : 'Category'}</Label>
           <Select
             value={form.category}
             onValueChange={value => set('category', value)}
@@ -239,7 +295,7 @@ function ExpenseForm({
               <SelectValue placeholder="Pick one" />
             </SelectTrigger>
             <SelectContent>
-              {categories.map(category => (
+              {typeCategories.map(category => (
                 <SelectItem key={category.id} value={category.name}>
                   {category.icon} {category.name}
                 </SelectItem>
@@ -274,7 +330,11 @@ function ExpenseForm({
       {(form.paymentMethod === 'card' || form.paymentMethod === 'digital') && (
         <div className="space-y-1.5">
           <Label htmlFor="bank">
-            {form.paymentMethod === 'card' ? 'Which bank?' : 'Which bank / wallet?'}
+            {isIncome
+              ? 'Which bank / wallet did it land in?'
+              : form.paymentMethod === 'card'
+                ? 'Which bank?'
+                : 'Which bank / wallet?'}
           </Label>
           <Input
             id="bank"
@@ -313,7 +373,7 @@ function ExpenseForm({
           Cancel
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving ? 'Saving…' : expense ? 'Save changes' : 'Add to ledger'}
+          {saving ? 'Saving…' : transaction ? 'Save changes' : 'Add to ledger'}
         </Button>
       </DialogFooter>
     </form>

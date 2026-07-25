@@ -86,7 +86,7 @@ export default function Home() {
                 </Link>
               </Button>
               <Button asChild size="lg" variant="ghost">
-                <Link href="/expenses">Browse the book</Link>
+                <Link href="/transactions">Browse the book</Link>
               </Button>
             </div>
           </div>

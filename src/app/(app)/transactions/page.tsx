@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import { Plus, Search } from 'lucide-react';
-import { Expense } from '@/types';
-import { useExpenses } from '@/context/expenses-context';
+import { Transaction } from '@/types';
+import { useTransactions } from '@/context/transactions-context';
 import { DATE_RANGE_PRESETS, PAYMENT_METHODS } from '@/lib/constants';
 import { resolvePreset } from '@/utils/dates';
+import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/utils/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,54 +18,85 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
-import { ExpenseFormDialog } from '@/features/expenses/expense-form-dialog';
-import { ExpenseDetailDialog } from '@/features/expenses/expense-detail-dialog';
-import { DeleteExpenseDialog } from '@/features/expenses/delete-expense-dialog';
-import { ExpenseList } from '@/features/expenses/expense-list';
+import { TransactionFormDialog } from '@/features/transactions/transaction-form-dialog';
+import { TransactionDetailDialog } from '@/features/transactions/transaction-detail-dialog';
+import { DeleteTransactionDialog } from '@/features/transactions/delete-transaction-dialog';
+import { TransactionList } from '@/features/transactions/transaction-list';
 
 const PRESETS = DATE_RANGE_PRESETS.filter(p => p.value !== 'custom');
 
-export default function ExpensesPage() {
-  const { hydrated, expenses, categories, settings } = useExpenses();
+export default function TransactionsPage() {
+  const { hydrated, transactions, categories, settings } = useTransactions();
 
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [rangeFilter, setRangeFilter] = useState('all');
   const [methodFilter, setMethodFilter] = useState('all');
 
   const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<Expense | null>(null);
-  const [deleting, setDeleting] = useState<Expense | null>(null);
-  const [viewing, setViewing] = useState<Expense | null>(null);
+  const [editing, setEditing] = useState<Transaction | null>(null);
+  const [deleting, setDeleting] = useState<Transaction | null>(null);
+  const [viewing, setViewing] = useState<Transaction | null>(null);
+
+  // Category dropdown narrows to the selected type
+  const categoryOptions =
+    typeFilter === 'all'
+      ? categories
+      : categories.filter(c => c.type === typeFilter);
 
   const filtered = useMemo(() => {
     const range = rangeFilter === 'all' ? null : resolvePreset(rangeFilter);
     const query = search.trim().toLowerCase();
-    return expenses.filter(expense => {
-      if (categoryFilter !== 'all' && expense.category !== categoryFilter)
-        return false;
-      if (methodFilter !== 'all' && expense.paymentMethod !== methodFilter)
-        return false;
+    return transactions.filter(t => {
+      if (typeFilter !== 'all' && t.type !== typeFilter) return false;
+      if (categoryFilter !== 'all' && t.category !== categoryFilter) return false;
+      if (methodFilter !== 'all' && t.paymentMethod !== methodFilter) return false;
       if (range) {
-        const date = new Date(expense.date);
+        const date = new Date(t.date);
         if (date < range.start || date > range.end) return false;
       }
       if (
         query &&
-        !expense.description.toLowerCase().includes(query) &&
-        !(expense.notes ?? '').toLowerCase().includes(query)
+        !t.description.toLowerCase().includes(query) &&
+        !(t.notes ?? '').toLowerCase().includes(query)
       )
         return false;
       return true;
     });
-  }, [expenses, search, categoryFilter, rangeFilter, methodFilter]);
+  }, [transactions, search, typeFilter, categoryFilter, rangeFilter, methodFilter]);
 
-  const total = filtered.reduce((sum, e) => sum + e.amount, 0);
+  const { incomeSum, expenseSum } = useMemo(() => {
+    let incomeSum = 0;
+    let expenseSum = 0;
+    for (const t of filtered) {
+      if (t.type === 'income') incomeSum += t.amount;
+      else expenseSum += t.amount;
+    }
+    return { incomeSum, expenseSum };
+  }, [filtered]);
+
   const isFiltering =
     search.trim() !== '' ||
+    typeFilter !== 'all' ||
     categoryFilter !== 'all' ||
     rangeFilter !== 'all' ||
     methodFilter !== 'all';
+
+  // Footer figure: net when mixed, otherwise the single-type total
+  const hasIncome = incomeSum > 0;
+  const hasExpense = expenseSum > 0;
+  const footer =
+    hasIncome && hasExpense
+      ? { label: 'Net', value: incomeSum - expenseSum, signed: true }
+      : hasIncome
+        ? { label: 'Income', value: incomeSum, signed: false }
+        : { label: 'Total', value: expenseSum, signed: false };
+
+  function handleTypeFilter(value: string) {
+    setTypeFilter(value);
+    setCategoryFilter('all');
+  }
 
   return (
     <div>
@@ -72,7 +104,7 @@ export default function ExpensesPage() {
         <div>
           <p className="eyebrow mb-1">The book of record</p>
           <h1 className="font-display text-4xl font-semibold tracking-tight">
-            Expenses
+            Transactions
           </h1>
         </div>
         <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
@@ -81,8 +113,8 @@ export default function ExpensesPage() {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
-        <div className="relative">
+      <div className="mb-6 flex flex-wrap gap-2">
+        <div className="relative min-w-52 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search entries…"
@@ -91,13 +123,23 @@ export default function ExpensesPage() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
+        <Select value={typeFilter} onValueChange={handleTypeFilter}>
+          <SelectTrigger className="w-36">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All types</SelectItem>
+            <SelectItem value="expense">Expenses</SelectItem>
+            <SelectItem value="income">Income</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-full sm:w-44">
+          <SelectTrigger className="w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All categories</SelectItem>
-            {categories.map(c => (
+            {categoryOptions.map(c => (
               <SelectItem key={c.id} value={c.name}>
                 {c.icon} {c.name}
               </SelectItem>
@@ -105,7 +147,7 @@ export default function ExpensesPage() {
           </SelectContent>
         </Select>
         <Select value={rangeFilter} onValueChange={setRangeFilter}>
-          <SelectTrigger className="w-full sm:w-40">
+          <SelectTrigger className="w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -118,7 +160,7 @@ export default function ExpensesPage() {
           </SelectContent>
         </Select>
         <Select value={methodFilter} onValueChange={setMethodFilter}>
-          <SelectTrigger className="w-full sm:w-40">
+          <SelectTrigger className="w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -146,7 +188,7 @@ export default function ExpensesPage() {
               <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
                 {isFiltering
                   ? 'Try loosening the filters above.'
-                  : 'Your ledger is empty. Record your first expense to begin.'}
+                  : 'Your ledger is empty. Record your first entry to begin.'}
               </p>
               {!isFiltering && (
                 <Button
@@ -159,22 +201,28 @@ export default function ExpensesPage() {
             </div>
           ) : (
             <>
-              <ExpenseList
-                expenses={filtered}
+              <TransactionList
+                transactions={filtered}
                 categories={categories}
                 currency={settings.currency}
                 onSelect={setViewing}
-                onEdit={expense => { setEditing(expense); setFormOpen(true); }}
+                onEdit={t => { setEditing(t); setFormOpen(true); }}
                 onDelete={setDeleting}
               />
               <div className="mt-2 flex items-baseline border-t-2 border-double pt-3">
                 <span className="eyebrow">
-                  {isFiltering ? 'Filtered total' : 'Total'} · {filtered.length}{' '}
+                  {footer.label} · {filtered.length}{' '}
                   {filtered.length === 1 ? 'entry' : 'entries'}
                 </span>
                 <span className="leader-dots" aria-hidden />
-                <span className="tabular text-lg font-semibold">
-                  {formatCurrency(total, settings.currency)}
+                <span
+                  className={cn(
+                    'tabular text-lg font-semibold',
+                    footer.signed && footer.value >= 0 && 'text-primary'
+                  )}
+                >
+                  {footer.signed && footer.value >= 0 ? '+' : ''}
+                  {formatCurrency(footer.value, settings.currency)}
                 </span>
               </div>
             </>
@@ -182,27 +230,30 @@ export default function ExpensesPage() {
         </CardContent>
       </Card>
 
-      <ExpenseDetailDialog
-        expense={viewing}
+      <TransactionDetailDialog
+        transaction={viewing}
         categories={categories}
         currency={settings.currency}
         onOpenChange={open => { if (!open) setViewing(null); }}
-        onEdit={expense => {
+        onEdit={t => {
           setViewing(null);
-          setEditing(expense);
+          setEditing(t);
           setFormOpen(true);
         }}
-        onDelete={expense => {
+        onDelete={t => {
           setViewing(null);
-          setDeleting(expense);
+          setDeleting(t);
         }}
       />
-      <ExpenseFormDialog
+      <TransactionFormDialog
         open={formOpen}
         onOpenChange={setFormOpen}
-        expense={editing}
+        transaction={editing}
       />
-      <DeleteExpenseDialog expense={deleting} onOpenChange={() => setDeleting(null)} />
+      <DeleteTransactionDialog
+        transaction={deleting}
+        onOpenChange={() => setDeleting(null)}
+      />
     </div>
   );
 }

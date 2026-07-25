@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Fraunces, Instrument_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/auth-context";
-import { ExpensesProvider } from "@/context/expenses-context";
+import { TransactionsProvider } from "@/context/transactions-context";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -55,7 +55,7 @@ export default function RootLayout({
         className={`${fraunces.variable} ${instrumentSans.variable} ${jetbrainsMono.variable}`}
       >
         <AuthProvider>
-          <ExpensesProvider>{children}</ExpensesProvider>
+          <TransactionsProvider>{children}</TransactionsProvider>
         </AuthProvider>
       </body>
     </html>

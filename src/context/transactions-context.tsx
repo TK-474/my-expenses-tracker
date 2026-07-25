@@ -8,9 +8,9 @@ import {
   useState,
 } from 'react';
 import {
-  Expense,
-  CreateExpenseInput,
-  UpdateExpenseInput,
+  Transaction,
+  CreateTransactionInput,
+  UpdateTransactionInput,
   Category,
   CreateCategoryInput,
   UpdateCategoryInput,
@@ -22,10 +22,11 @@ import { db } from '@/services/db';
 import { useAuth } from '@/context/auth-context';
 import {
   DEFAULT_CATEGORIES,
+  DEFAULT_INCOME_CATEGORIES,
   SUBSCRIPTIONS_CATEGORY,
   STORAGE_KEYS,
 } from '@/lib/constants';
-import { SAMPLE_EXPENSES, SAMPLE_BUDGETS } from '@/lib/sample-data';
+import { SAMPLE_TRANSACTIONS, SAMPLE_BUDGETS } from '@/lib/sample-data';
 
 interface Settings {
   currency: string;
@@ -33,18 +34,18 @@ interface Settings {
 
 const DEFAULT_SETTINGS: Settings = { currency: 'PKR' };
 
-interface ExpensesContextValue {
+interface TransactionsContextValue {
   /** False until the signed-in user's data has been fetched */
   hydrated: boolean;
-  expenses: Expense[];
+  transactions: Transaction[];
   categories: Category[];
   subscriptions: Subscription[];
   settings: Settings;
   /** Entries still sitting in this browser's pre-Supabase localStorage */
   legacyLocalCount: number;
-  addExpense: (input: CreateExpenseInput) => Promise<void>;
-  updateExpense: (input: UpdateExpenseInput) => Promise<void>;
-  deleteExpense: (id: string) => Promise<void>;
+  addTransaction: (input: CreateTransactionInput) => Promise<void>;
+  updateTransaction: (input: UpdateTransactionInput) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<void>;
   addCategory: (input: CreateCategoryInput) => Promise<void>;
   updateCategory: (input: UpdateCategoryInput) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
@@ -57,24 +58,25 @@ interface ExpensesContextValue {
   migrateLocalData: () => Promise<void>;
 }
 
-const ExpensesContext = createContext<ExpensesContextValue | null>(null);
+const TransactionsContext = createContext<TransactionsContextValue | null>(null);
 
-function sortByDateDesc(expenses: Expense[]): Expense[] {
-  return [...expenses].sort((a, b) => b.date.getTime() - a.date.getTime());
+function sortByDateDesc(transactions: Transaction[]): Transaction[] {
+  return [...transactions].sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 
-/** Pre-Supabase data this browser may still hold */
+/** Pre-Supabase data this browser may still hold (all treated as expenses) */
 function readLegacyLocal(): {
-  expenses: CreateExpenseInput[];
+  transactions: CreateTransactionInput[];
   categories: CreateCategoryInput[];
 } {
-  if (typeof window === 'undefined') return { expenses: [], categories: [] };
+  if (typeof window === 'undefined') return { transactions: [], categories: [] };
   try {
-    const expenses = (
+    const transactions = (
       JSON.parse(localStorage.getItem(STORAGE_KEYS.EXPENSES) ?? '[]') as Array<
-        Omit<Expense, 'date'> & { date: string }
+        Omit<Transaction, 'date' | 'type'> & { date: string }
       >
     ).map(e => ({
+      type: 'expense' as const,
       amount: e.amount,
       description: e.description,
       category: e.category,
@@ -89,22 +91,23 @@ function readLegacyLocal(): {
       ) as Category[]
     ).map(c => ({
       name: c.name,
+      type: 'expense' as const,
       icon: c.icon,
       color: c.color,
       budget: c.budget,
     }));
-    return { expenses, categories };
+    return { transactions, categories };
   } catch {
-    return { expenses: [], categories: [] };
+    return { transactions: [], categories: [] };
   }
 }
 
-export function ExpensesProvider({ children }: { children: React.ReactNode }) {
+export function TransactionsProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const userId = user?.id ?? null;
 
   const [hydrated, setHydrated] = useState(false);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
@@ -113,21 +116,35 @@ export function ExpensesProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async (currentUserId: string) => {
     let cats = await db.fetchCategories();
     if (cats.length === 0) {
-      // First sign-in: give the account the default set of categories
-      await db.createCategories(DEFAULT_CATEGORIES, currentUserId);
+      // First sign-in: seed the default expense categories and income sources
+      await db.createCategories(
+        [...DEFAULT_CATEGORIES, ...DEFAULT_INCOME_CATEGORIES],
+        currentUserId
+      );
       cats = await db.fetchCategories();
-    } else if (!cats.some(c => c.name === SUBSCRIPTIONS_CATEGORY.name)) {
-      // Existing accounts predating the subscriptions feature still get the
-      // category that logged subscription payments are filed under.
-      await db.createCategory(SUBSCRIPTIONS_CATEGORY, currentUserId);
-      cats = await db.fetchCategories();
+    } else {
+      // Backfill categories that accounts predating a feature won't have yet
+      const existing = new Set(cats.map(c => c.name.toLowerCase()));
+      const missing: CreateCategoryInput[] = [];
+      if (!existing.has(SUBSCRIPTIONS_CATEGORY.name.toLowerCase())) {
+        missing.push(SUBSCRIPTIONS_CATEGORY);
+      }
+      if (!cats.some(c => c.type === 'income')) {
+        for (const c of DEFAULT_INCOME_CATEGORIES) {
+          if (!existing.has(c.name.toLowerCase())) missing.push(c);
+        }
+      }
+      if (missing.length > 0) {
+        await db.createCategories(missing, currentUserId);
+        cats = await db.fetchCategories();
+      }
     }
-    const [exps, subs] = await Promise.all([
-      db.fetchExpenses(),
+    const [txns, subs] = await Promise.all([
+      db.fetchTransactions(),
       db.fetchSubscriptions(),
     ]);
     setCategories(cats);
-    setExpenses(sortByDateDesc(exps));
+    setTransactions(sortByDateDesc(txns));
     setSubscriptions(subs);
   }, []);
 
@@ -136,13 +153,13 @@ export function ExpensesProvider({ children }: { children: React.ReactNode }) {
     const saved = localStorage.getItem(STORAGE_KEYS.SETTINGS);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time localStorage read on mount
     if (saved) setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(saved) });
-    setLegacyLocalCount(readLegacyLocal().expenses.length);
+    setLegacyLocalCount(readLegacyLocal().transactions.length);
   }, []);
 
   useEffect(() => {
     if (!userId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reset when signed out
-      setExpenses([]);
+      setTransactions([]);
       setCategories([]);
       setSubscriptions([]);
       setHydrated(false);
@@ -159,25 +176,25 @@ export function ExpensesProvider({ children }: { children: React.ReactNode }) {
     };
   }, [userId, refresh]);
 
-  const addExpense = useCallback(
-    async (input: CreateExpenseInput) => {
+  const addTransaction = useCallback(
+    async (input: CreateTransactionInput) => {
       if (!userId) return;
-      const expense = await db.createExpense(input, userId);
-      setExpenses(prev => sortByDateDesc([expense, ...prev]));
+      const transaction = await db.createTransaction(input, userId);
+      setTransactions(prev => sortByDateDesc([transaction, ...prev]));
     },
     [userId]
   );
 
-  const updateExpense = useCallback(async (input: UpdateExpenseInput) => {
-    const expense = await db.updateExpense(input);
-    setExpenses(prev =>
-      sortByDateDesc(prev.map(e => (e.id === expense.id ? expense : e)))
+  const updateTransaction = useCallback(async (input: UpdateTransactionInput) => {
+    const transaction = await db.updateTransaction(input);
+    setTransactions(prev =>
+      sortByDateDesc(prev.map(t => (t.id === transaction.id ? transaction : t)))
     );
   }, []);
 
-  const deleteExpense = useCallback(async (id: string) => {
-    await db.deleteExpense(id);
-    setExpenses(prev => prev.filter(e => e.id !== id));
+  const deleteTransaction = useCallback(async (id: string) => {
+    await db.deleteTransaction(id);
+    setTransactions(prev => prev.filter(t => t.id !== id));
   }, []);
 
   const addCategory = useCallback(
@@ -230,7 +247,7 @@ export function ExpensesProvider({ children }: { children: React.ReactNode }) {
 
   const loadSampleData = useCallback(async () => {
     if (!userId) return;
-    await db.createExpenses(SAMPLE_EXPENSES, userId);
+    await db.createTransactions(SAMPLE_TRANSACTIONS, userId);
     for (const category of await db.fetchCategories()) {
       const budget = SAMPLE_BUDGETS[category.name];
       if (budget != null && category.budget == null) {
@@ -256,8 +273,8 @@ export function ExpensesProvider({ children }: { children: React.ReactNode }) {
     if (newCategories.length > 0) {
       await db.createCategories(newCategories, userId);
     }
-    if (legacy.expenses.length > 0) {
-      await db.createExpenses(legacy.expenses, userId);
+    if (legacy.transactions.length > 0) {
+      await db.createTransactions(legacy.transactions, userId);
     }
     localStorage.removeItem(STORAGE_KEYS.EXPENSES);
     localStorage.removeItem(STORAGE_KEYS.CATEGORIES);
@@ -266,17 +283,17 @@ export function ExpensesProvider({ children }: { children: React.ReactNode }) {
   }, [userId, categories, refresh]);
 
   return (
-    <ExpensesContext.Provider
+    <TransactionsContext.Provider
       value={{
         hydrated,
-        expenses,
+        transactions,
         categories,
         subscriptions,
         settings,
         legacyLocalCount,
-        addExpense,
-        updateExpense,
-        deleteExpense,
+        addTransaction,
+        updateTransaction,
+        deleteTransaction,
         addCategory,
         updateCategory,
         deleteCategory,
@@ -290,14 +307,14 @@ export function ExpensesProvider({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
-    </ExpensesContext.Provider>
+    </TransactionsContext.Provider>
   );
 }
 
-export function useExpenses(): ExpensesContextValue {
-  const context = useContext(ExpensesContext);
+export function useTransactions(): TransactionsContextValue {
+  const context = useContext(TransactionsContext);
   if (!context) {
-    throw new Error('useExpenses must be used within an ExpensesProvider');
+    throw new Error('useTransactions must be used within a TransactionsProvider');
   }
   return context;
 }

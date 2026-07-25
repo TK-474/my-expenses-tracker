@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CloudUpload, Download, Eraser, LogOut, Sparkles } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
-import { useExpenses } from '@/context/expenses-context';
+import { useTransactions } from '@/context/transactions-context';
 import { CURRENCIES } from '@/lib/constants';
 import { downloadCsv } from '@/utils/csv';
 import { toInputDate } from '@/utils/dates';
@@ -37,14 +37,14 @@ export default function SettingsPage() {
   const router = useRouter();
   const { user, signOut } = useAuth();
   const {
-    expenses,
+    transactions,
     settings,
     legacyLocalCount,
     setCurrency,
     loadSampleData,
     clearAllData,
     migrateLocalData,
-  } = useExpenses();
+  } = useTransactions();
 
   const [confirmClear, setConfirmClear] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -154,9 +154,12 @@ export default function SettingsPage() {
           <CardContent className="flex flex-wrap gap-3">
             <Button
               variant="outline"
-              disabled={expenses.length === 0}
+              disabled={transactions.length === 0}
               onClick={() =>
-                downloadCsv(expenses, `expenses-${toInputDate(new Date())}.csv`)
+                downloadCsv(
+                  transactions,
+                  `transactions-${toInputDate(new Date())}.csv`
+                )
               }
             >
               <Download /> Export CSV
@@ -172,7 +175,7 @@ export default function SettingsPage() {
             <Button
               variant="outline"
               className="text-destructive hover:text-destructive"
-              disabled={expenses.length === 0 || busy !== null}
+              disabled={transactions.length === 0 || busy !== null}
               onClick={() => setConfirmClear(true)}
             >
               <Eraser /> Clear all data
@@ -209,7 +212,7 @@ export default function SettingsPage() {
               Burn the book?
             </DialogTitle>
             <DialogDescription>
-              All {expenses.length} entries will be permanently deleted from
+              All {transactions.length} entries will be permanently deleted from
               your account and categories reset to defaults. Consider exporting
               a CSV first.
             </DialogDescription>

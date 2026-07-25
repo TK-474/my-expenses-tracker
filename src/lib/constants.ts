@@ -1,3 +1,5 @@
+import { CreateCategoryInput } from '@/types';
+
 // Payment Methods
 export const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash' },
@@ -7,24 +9,35 @@ export const PAYMENT_METHODS = [
 ] as const;
 
 // The category that logged subscription payments are filed under.
-// Guaranteed to exist for every account (see expenses-context).
+// Guaranteed to exist for every account (see transactions-context).
 export const SUBSCRIPTIONS_CATEGORY = {
   name: 'Subscriptions',
+  type: 'expense',
   icon: '🔁',
   color: '#8b7fd6',
 } as const;
 
-// Default Categories
-export const DEFAULT_CATEGORIES = [
-  { name: 'Food & Dining', icon: '🍔', color: '#FF6B6B' },
-  { name: 'Transportation', icon: '🚗', color: '#4ECDC4' },
-  { name: 'Shopping', icon: '🛍️', color: '#FFE66D' },
-  { name: 'Entertainment', icon: '🎬', color: '#A8E6CF' },
-  { name: 'Healthcare', icon: '⚕️', color: '#FF8B94' },
-  { name: 'Utilities', icon: '💡', color: '#95E1D3' },
-  { name: 'Education', icon: '📚', color: '#C7CEEA' },
-  { name: SUBSCRIPTIONS_CATEGORY.name, icon: SUBSCRIPTIONS_CATEGORY.icon, color: SUBSCRIPTIONS_CATEGORY.color },
-  { name: 'Others', icon: '📦', color: '#B4B4B4' },
+// Default expense categories
+export const DEFAULT_CATEGORIES: CreateCategoryInput[] = [
+  { name: 'Food & Dining', type: 'expense', icon: '🍔', color: '#FF6B6B' },
+  { name: 'Transportation', type: 'expense', icon: '🚗', color: '#4ECDC4' },
+  { name: 'Shopping', type: 'expense', icon: '🛍️', color: '#FFE66D' },
+  { name: 'Entertainment', type: 'expense', icon: '🎬', color: '#A8E6CF' },
+  { name: 'Healthcare', type: 'expense', icon: '⚕️', color: '#FF8B94' },
+  { name: 'Utilities', type: 'expense', icon: '💡', color: '#95E1D3' },
+  { name: 'Education', type: 'expense', icon: '📚', color: '#C7CEEA' },
+  { name: SUBSCRIPTIONS_CATEGORY.name, type: 'expense', icon: SUBSCRIPTIONS_CATEGORY.icon, color: SUBSCRIPTIONS_CATEGORY.color },
+  { name: 'Others', type: 'expense', icon: '📦', color: '#B4B4B4' },
+];
+
+// Default income sources (categories with type 'income')
+export const DEFAULT_INCOME_CATEGORIES: CreateCategoryInput[] = [
+  { name: 'Salary', type: 'income', icon: '💰', color: '#4CAF50' },
+  { name: 'Freelance', type: 'income', icon: '💻', color: '#26A69A' },
+  { name: 'Interest', type: 'income', icon: '📈', color: '#66BB6A' },
+  { name: 'Gift', type: 'income', icon: '🎁', color: '#9CCC65' },
+  { name: 'Refund', type: 'income', icon: '↩️', color: '#8BC34A' },
+  { name: 'Other income', type: 'income', icon: '➕', color: '#7CB342' },
 ];
 
 // Subscription billing cadences

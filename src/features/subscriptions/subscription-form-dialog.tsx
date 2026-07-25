@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Subscription } from '@/types';
-import { useExpenses } from '@/context/expenses-context';
+import { useTransactions } from '@/context/transactions-context';
 import {
   PAYMENT_METHODS,
   CURRENCIES,
@@ -85,7 +85,7 @@ function SubscriptionForm({
   subscription?: Subscription | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { settings, addSubscription, updateSubscription } = useExpenses();
+  const { settings, addSubscription, updateSubscription } = useTransactions();
   const now = new Date();
   const [form, setForm] = useState<FormState>(() =>
     subscription

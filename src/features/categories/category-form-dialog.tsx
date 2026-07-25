@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Category } from '@/types';
-import { useExpenses } from '@/context/expenses-context';
+import { Category, TransactionType } from '@/types';
+import { useTransactions } from '@/context/transactions-context';
 import { CURRENCIES } from '@/lib/constants';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -21,6 +22,8 @@ interface CategoryFormDialogProps {
   onOpenChange: (open: boolean) => void;
   /** When set, the dialog edits this category instead of creating one */
   category?: Category | null;
+  /** Preselected type when creating a new category */
+  defaultType?: TransactionType;
 }
 
 const SWATCHES = [
@@ -33,6 +36,7 @@ export function CategoryFormDialog({
   open,
   onOpenChange,
   category,
+  defaultType = 'expense',
 }: CategoryFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -42,8 +46,7 @@ export function CategoryFormDialog({
             {category ? 'Edit category' : 'New category'}
           </DialogTitle>
           <DialogDescription>
-            Categories are the columns of your ledger. A monthly budget is
-            optional.
+            Categories group your entries. Income sources have no budget.
           </DialogDescription>
         </DialogHeader>
         {/* Radix unmounts DialogContent children when closed, so the form
@@ -51,6 +54,7 @@ export function CategoryFormDialog({
         <CategoryForm
           key={category?.id ?? 'new'}
           category={category}
+          defaultType={defaultType}
           onOpenChange={onOpenChange}
         />
       </DialogContent>
@@ -60,12 +64,15 @@ export function CategoryFormDialog({
 
 function CategoryForm({
   category,
+  defaultType,
   onOpenChange,
 }: {
   category?: Category | null;
+  defaultType: TransactionType;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { categories, settings, addCategory, updateCategory } = useExpenses();
+  const { categories, settings, addCategory, updateCategory } = useTransactions();
+  const [type, setType] = useState<TransactionType>(category?.type ?? defaultType);
   const [name, setName] = useState(category?.name ?? '');
   const [icon, setIcon] = useState(category?.icon ?? '');
   const [color, setColor] = useState(
@@ -77,6 +84,7 @@ function CategoryForm({
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const isIncome = type === 'income';
   const currencySymbol =
     CURRENCIES.find(c => c.value === settings.currency)?.symbol ?? '$';
 
@@ -94,17 +102,19 @@ function CategoryForm({
       setError('A category with this name already exists');
       return;
     }
-    const parsedBudget = budget ? parseFloat(budget) : undefined;
-    if (budget && (isNaN(parsedBudget!) || parsedBudget! <= 0)) {
+    const parsedBudget = !isIncome && budget ? parseFloat(budget) : undefined;
+    if (!isIncome && budget && (isNaN(parsedBudget!) || parsedBudget! <= 0)) {
       setError('Budget must be a positive number');
       return;
     }
 
     const input = {
       name: trimmed,
+      type,
       icon: icon.trim() || undefined,
       color,
-      budget: parsedBudget,
+      // Income categories never carry a budget
+      budget: isIncome ? undefined : parsedBudget,
     };
     setSaving(true);
     setError('');
@@ -124,12 +134,31 @@ function CategoryForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Type toggle */}
+      <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+        {(['expense', 'income'] as const).map(t => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setType(t)}
+            className={cn(
+              'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+              type === t
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            {t === 'income' ? 'Income source' : 'Expense category'}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-[1fr_5rem] gap-4">
         <div className="space-y-1.5">
           <Label htmlFor="category-name">Name</Label>
           <Input
             id="category-name"
-            placeholder="e.g. Subscriptions"
+            placeholder={isIncome ? 'e.g. Salary' : 'e.g. Subscriptions'}
             value={name}
             onChange={e => setName(e.target.value)}
           />
@@ -138,7 +167,7 @@ function CategoryForm({
           <Label htmlFor="category-icon">Icon</Label>
           <Input
             id="category-icon"
-            placeholder="🧾"
+            placeholder={isIncome ? '💰' : '🧾'}
             maxLength={4}
             className="text-center"
             value={icon}
@@ -167,28 +196,30 @@ function CategoryForm({
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="category-budget">
-          Monthly budget{' '}
-          <span className="text-muted-foreground">(optional)</span>
-        </Label>
-        <div className="relative">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-            {currencySymbol}
-          </span>
-          <Input
-            id="category-budget"
-            type="number"
-            inputMode="decimal"
-            step="1"
-            min="0"
-            placeholder="No limit"
-            className="pl-7 tabular"
-            value={budget}
-            onChange={e => setBudget(e.target.value)}
-          />
+      {!isIncome && (
+        <div className="space-y-1.5">
+          <Label htmlFor="category-budget">
+            Monthly budget{' '}
+            <span className="text-muted-foreground">(optional)</span>
+          </Label>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+              {currencySymbol}
+            </span>
+            <Input
+              id="category-budget"
+              type="number"
+              inputMode="decimal"
+              step="1"
+              min="0"
+              placeholder="No limit"
+              className="pl-7 tabular"
+              value={budget}
+              onChange={e => setBudget(e.target.value)}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {error && <p className="text-xs text-destructive">{error}</p>}
 

@@ -1,4 +1,4 @@
-export * from './expense';
+export * from './transaction';
 export * from './category';
 export * from './subscription';
 

@@ -5,6 +5,7 @@ create table public.categories (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
   name text not null,
+  type text not null default 'expense' check (type in ('income', 'expense')),
   icon text,
   color text,
   budget numeric(12, 2) check (budget is null or budget > 0),
@@ -13,9 +14,12 @@ create table public.categories (
   unique (user_id, name)
 );
 
-create table public.expenses (
+-- The ledger: both money out ('expense') and money in ('income').
+-- Amounts are always positive; `type` carries the direction.
+create table public.transactions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
+  type text not null default 'expense' check (type in ('income', 'expense')),
   amount numeric(12, 2) not null check (amount > 0),
   description text not null,
   category text not null,
@@ -28,7 +32,7 @@ create table public.expenses (
 );
 
 -- Subscriptions are tracked separately from the ledger. They do NOT auto-post
--- expenses; the app offers a manual "log this payment" action instead.
+-- transactions; the app offers a manual "log this payment" action instead.
 create table public.subscriptions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -44,19 +48,20 @@ create table public.subscriptions (
   updated_at timestamptz not null default now()
 );
 
-create index expenses_user_date_idx on public.expenses (user_id, date desc);
+create index transactions_user_date_idx on public.transactions (user_id, date desc);
+create index transactions_user_type_idx on public.transactions (user_id, type);
 create index categories_user_idx on public.categories (user_id);
 create index subscriptions_user_idx on public.subscriptions (user_id);
 
 -- Row Level Security: each user can only touch their own rows
 alter table public.categories enable row level security;
-alter table public.expenses enable row level security;
+alter table public.transactions enable row level security;
 alter table public.subscriptions enable row level security;
 
 create policy "own categories" on public.categories
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
-create policy "own expenses" on public.expenses
+create policy "own transactions" on public.transactions
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy "own subscriptions" on public.subscriptions
@@ -74,7 +79,7 @@ $$;
 create trigger categories_updated_at before update on public.categories
   for each row execute function public.set_updated_at();
 
-create trigger expenses_updated_at before update on public.expenses
+create trigger transactions_updated_at before update on public.transactions
   for each row execute function public.set_updated_at();
 
 create trigger subscriptions_updated_at before update on public.subscriptions
