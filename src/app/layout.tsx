@@ -3,6 +3,7 @@ import { Fraunces, Instrument_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/auth-context";
 import { TransactionsProvider } from "@/context/transactions-context";
+import { Analytics } from "@vercel/analytics/next";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -57,6 +58,7 @@ export default function RootLayout({
         <AuthProvider>
           <TransactionsProvider>{children}</TransactionsProvider>
         </AuthProvider>
+        <Analytics />
       </body>
     </html>
   );
